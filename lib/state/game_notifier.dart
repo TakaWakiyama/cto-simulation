@@ -63,8 +63,12 @@ class GameNotifier extends StateNotifier<GameState> {
   /// 社員を雇用
   void hireEmployee(Employee employee) {
     if (!_canAfford(ActionCategory.hiring)) return;
+    final prevCount = state.employees.length;
     state = EmployeeEngine.hireEmployee(state, employee);
-    state = state.copyWith(ap: state.ap - _apCost(ActionCategory.hiring));
+    // 採用が成功した場合のみAPを消費
+    if (state.employees.length > prevCount) {
+      state = state.copyWith(ap: state.ap - _apCost(ActionCategory.hiring));
+    }
   }
 
   /// 社員を解雇
@@ -175,8 +179,12 @@ class GameNotifier extends StateNotifier<GameState> {
   /// 非エンジニアスタッフを雇用
   void hireStaff(Employee employee) {
     if (!_canAfford(ActionCategory.hiring)) return;
+    final prevCount = state.employees.length;
     state = EmployeeEngine.hireEmployee(state, employee);
-    state = state.copyWith(ap: state.ap - _apCost(ActionCategory.hiring));
+    // 採用が成功した場合のみAPを消費
+    if (state.employees.length > prevCount) {
+      state = state.copyWith(ap: state.ap - _apCost(ActionCategory.hiring));
+    }
   }
 
   /// ローン借入

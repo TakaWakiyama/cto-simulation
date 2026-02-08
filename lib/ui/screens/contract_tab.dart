@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ap_cost_calculator.dart';
+import '../../core/models/ceo_background.dart';
 import '../../core/models/contract_project.dart';
 import '../../state/game_notifier.dart';
 import '../theme/app_colors.dart';
@@ -47,9 +49,15 @@ class ContractTab extends ConsumerWidget {
           count: availableProjects.length,
           color: AppColors.blue,
           trailing: TextButton.icon(
-            onPressed: state.ap > 0 ? () => notifier.refreshProjects() : null,
+            onPressed: ApCostCalculator.canAfford(
+                    state.ap, state.config, ActionCategory.sales)
+                ? () => notifier.refreshProjects()
+                : null,
             icon: const Icon(Icons.refresh, size: 16),
-            label: const Text('更新', style: TextStyle(fontSize: 12)),
+            label: Text(
+              '更新 (AP${ApCostCalculator.cost(state.config, ActionCategory.sales)})',
+              style: const TextStyle(fontSize: 12),
+            ),
           ),
         ),
         if (availableProjects.isEmpty)
@@ -67,7 +75,8 @@ class ContractTab extends ConsumerWidget {
           ...availableProjects.map((project) => ProjectCard(
                 project: project,
                 currentTurn: state.currentTurn,
-                onAccept: state.ap > 0
+                onAccept: ApCostCalculator.canAfford(
+                        state.ap, state.config, ActionCategory.sales)
                     ? () => notifier.acceptProject(project.id)
                     : null,
               )),

@@ -13,6 +13,7 @@ import 'infra_tab.dart';
 import 'saas_tab.dart';
 import 'tech_tree_screen.dart';
 import 'turn_log_sheet.dart';
+import 'tutorial_dialog.dart';
 
 class MainDashboard extends ConsumerStatefulWidget {
   const MainDashboard({super.key});
@@ -25,11 +26,25 @@ class _MainDashboardState extends ConsumerState<MainDashboard>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _showGuide = true;
+  bool _tutorialShown = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    // 初回チュートリアル表示
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = ref.read(gameProvider);
+      if (state.currentTurn == 1 && !_tutorialShown) {
+        _tutorialShown = true;
+        _showGuide = false;
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const TutorialDialog(),
+        );
+      }
+    });
   }
 
   @override
@@ -327,24 +342,6 @@ class _HintBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 初回ガイド
-    if (showGuide && state.currentTurn == 1) {
-      return _buildBanner(
-        icon: Icons.lightbulb_outline,
-        color: AppColors.yellow,
-        title: 'ようこそ！まずは受託案件を受注しましょう',
-        subtitle: '「受託」タブで案件を選び → 社員をアサイン → ターン終了で開発が進みます',
-        action: TextButton(
-          onPressed: () {
-            onDismissGuide();
-            onGoToTab(0);
-          },
-          child: const Text('受託タブへ', style: TextStyle(fontSize: 12)),
-        ),
-        onDismiss: onDismissGuide,
-      );
-    }
-
     // 状況に応じた警告ヒント
     final hint = _getContextualHint();
     if (hint == null) return const SizedBox.shrink();

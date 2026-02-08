@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ap_cost_calculator.dart';
+import '../../core/models/ceo_background.dart';
 import '../../core/models/technology.dart';
 import '../../state/game_notifier.dart';
 import '../theme/app_colors.dart';
@@ -100,7 +102,8 @@ class TechTreeScreen extends ConsumerWidget {
                 ...techs.map((tech) => _TechCard(
                       tech: tech,
                       canResearch: tech.canResearch(state.unlockedTechIds) &&
-                          state.ap > 0 &&
+                          ApCostCalculator.canAfford(
+                              state.ap, state.config, ActionCategory.tech) &&
                           state.money >= tech.researchCost,
                       onResearch: () => notifier.startResearch(tech.id),
                       allTechs: state.technologies,

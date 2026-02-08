@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ap_cost_calculator.dart';
 import '../../core/employee_engine.dart';
+import '../../core/models/ceo_background.dart';
 import '../../core/models/employee.dart';
 import '../../core/models/employee_type.dart';
 import '../../core/staff_bonus_engine.dart';
@@ -97,11 +99,14 @@ class _EmployeeTabState extends ConsumerState<EmployeeTab> {
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: ElevatedButton.icon(
-                onPressed: state.ap > 0
+                onPressed: ApCostCalculator.canAfford(
+                        state.ap, state.config, ActionCategory.hiring)
                     ? () => _showHiringDialog(context, ref)
                     : null,
                 icon: const Icon(Icons.person_add, size: 18),
-                label: const Text('エンジニアを採用する'),
+                label: Text(
+                  'エンジニアを採用する (AP${ApCostCalculator.cost(state.config, ActionCategory.hiring)})',
+                ),
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(44),
                 ),
@@ -132,11 +137,14 @@ class _EmployeeTabState extends ConsumerState<EmployeeTab> {
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: ElevatedButton.icon(
-                onPressed: state.ap > 0
+                onPressed: ApCostCalculator.canAfford(
+                        state.ap, state.config, ActionCategory.hiring)
                     ? () => _showStaffHiringDialog(context, ref)
                     : null,
                 icon: const Icon(Icons.person_add, size: 18),
-                label: const Text('スタッフを採用する'),
+                label: Text(
+                  'スタッフを採用する (AP${ApCostCalculator.cost(state.config, ActionCategory.hiring)})',
+                ),
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(44),
                   backgroundColor: AppColors.purple,
@@ -162,8 +170,10 @@ class _EmployeeTabState extends ConsumerState<EmployeeTab> {
   }
 
   void _showHiringDialog(BuildContext context, WidgetRef ref) {
+    final state = ref.read(gameProvider);
     final notifier = ref.read(gameProvider.notifier);
     final candidates = EmployeeEngine.generateCandidates(3);
+    final hrDiscount = StaffBonusEngine.hrHiringDiscount(state);
 
     showModalBottomSheet(
       context: context,
@@ -184,17 +194,32 @@ class _EmployeeTabState extends ConsumerState<EmployeeTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '採用候補',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '採用候補',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '所持金: ${state.money}万円',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.money,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    '採用費用: 月給の2ヶ月分',
-                    style: TextStyle(
+                  Text(
+                    hrDiscount > 0
+                        ? '採用費用: 月給の2ヶ月分（HR割引 ${(hrDiscount * 100).toStringAsFixed(0)}% OFF）'
+                        : '採用費用: 月給の2ヶ月分',
+                    style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     ),
@@ -204,7 +229,10 @@ class _EmployeeTabState extends ConsumerState<EmployeeTab> {
                     child: ListView(
                       controller: scrollController,
                       children: candidates.map((candidate) {
-                        final hiringCost = candidate.salary * 2;
+                        final hiringCost =
+                            (candidate.salary * 2 * (1.0 - hrDiscount))
+                                .round();
+                        final canAfford = state.money >= hiringCost;
                         return Card(
                           child: Padding(
                             padding: const EdgeInsets.all(12),
@@ -218,21 +246,40 @@ class _EmployeeTabState extends ConsumerState<EmployeeTab> {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    Text(
-                                      '採用費用: ${hiringCost}万円',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.orange,
+                                    Expanded(
+                                      child: Text(
+                                        '採用費用: ${hiringCost}万円',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: canAfford
+                                              ? AppColors.orange
+                                              : AppColors.red,
+                                        ),
                                       ),
                                     ),
-                                    const Spacer(),
                                     ElevatedButton(
-                                      onPressed: () {
-                                        notifier.hireEmployee(candidate);
-                                        Navigator.pop(ctx);
-                                      },
-                                      child: const Text('採用',
-                                          style: TextStyle(fontSize: 12)),
+                                      onPressed: canAfford
+                                          ? () {
+                                              notifier
+                                                  .hireEmployee(candidate);
+                                              Navigator.pop(ctx);
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                      '${candidate.name}を採用しました！'),
+                                                  backgroundColor:
+                                                      AppColors.greenDark,
+                                                  duration: const Duration(
+                                                      seconds: 2),
+                                                ),
+                                              );
+                                            }
+                                          : null,
+                                      child: Text(
+                                        canAfford ? '採用' : '資金不足',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -389,16 +436,31 @@ class _StaffHiringContentState extends ConsumerState<_StaffHiringContent> {
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(gameProvider);
     final notifier = ref.read(gameProvider.notifier);
+    final hrDiscount = StaffBonusEngine.hrHiringDiscount(state);
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'スタッフ採用',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'スタッフ採用',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Text(
+                '所持金: ${state.money}万円',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.money,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           const Text(
@@ -458,7 +520,9 @@ class _StaffHiringContentState extends ConsumerState<_StaffHiringContent> {
               child: ListView(
                 controller: widget.scrollController,
                 children: _candidates.map((candidate) {
-                  final hiringCost = candidate.salary * 2;
+                  final hiringCost =
+                      (candidate.salary * 2 * (1.0 - hrDiscount)).round();
+                  final canAfford = state.money >= hiringCost;
                   return Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
@@ -478,21 +542,35 @@ class _StaffHiringContentState extends ConsumerState<_StaffHiringContent> {
                                 const SizedBox(height: 4),
                                 Text(
                                   '月給: ${candidate.salary}万円 / 採用費: ${hiringCost}万円',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: AppColors.textSecondary,
+                                    color: canAfford
+                                        ? AppColors.textSecondary
+                                        : AppColors.red,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           ElevatedButton(
-                            onPressed: () {
-                              notifier.hireStaff(candidate);
-                              Navigator.pop(context);
-                            },
-                            child: const Text('採用',
-                                style: TextStyle(fontSize: 12)),
+                            onPressed: canAfford
+                                ? () {
+                                    notifier.hireStaff(candidate);
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                            '${candidate.name}を採用しました！'),
+                                        backgroundColor: AppColors.greenDark,
+                                        duration: const Duration(seconds: 2),
+                                      ),
+                                    );
+                                  }
+                                : null,
+                            child: Text(
+                              canAfford ? '採用' : '資金不足',
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           ),
                         ],
                       ),

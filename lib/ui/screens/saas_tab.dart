@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/saas_engine.dart';
+import '../../core/ap_cost_calculator.dart';
+import '../../core/models/ceo_background.dart';
 import '../../core/models/saas_product.dart';
+import '../../core/saas_engine.dart';
 import '../../state/game_notifier.dart';
 import '../theme/app_colors.dart';
 import '../widgets/progress_bar.dart';
@@ -70,11 +72,14 @@ class SaaSTab extends ConsumerWidget {
 
         // 新規SaaS開発ボタン
         ElevatedButton.icon(
-          onPressed: state.ap > 0
+          onPressed: ApCostCalculator.canAfford(
+                  state.ap, state.config, ActionCategory.tech)
               ? () => _showNewProductDialog(context, ref)
               : null,
           icon: const Icon(Icons.rocket_launch, size: 18),
-          label: const Text('新しいSaaS製品を開発する'),
+          label: Text(
+            '新しいSaaS製品を開発する (AP${ApCostCalculator.cost(state.config, ActionCategory.tech)})',
+          ),
           style: ElevatedButton.styleFrom(
             minimumSize: const Size.fromHeight(44),
             backgroundColor: AppColors.purple.withValues(alpha: 0.8),
@@ -98,7 +103,9 @@ class SaaSTab extends ConsumerWidget {
           _sectionTitle('開発中', AppColors.orange),
           ...developingProducts.map((product) => _DevelopingSaaSCard(
                 product: product,
-                canLaunch: product.isDevelopmentComplete && state.ap > 0,
+                canLaunch: product.isDevelopmentComplete &&
+                    ApCostCalculator.canAfford(
+                        state.ap, state.config, ActionCategory.tech),
                 onLaunch: () => notifier.launchSaaS(product.id),
                 onAssign: () => _showAssignDialog(context, ref, product),
               )),

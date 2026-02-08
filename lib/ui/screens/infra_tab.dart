@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ap_cost_calculator.dart';
 import '../../core/infra_engine.dart';
+import '../../core/models/ceo_background.dart';
 import '../../core/models/server.dart';
 import '../../state/game_notifier.dart';
 import '../theme/app_colors.dart';
@@ -67,11 +69,14 @@ class InfraTab extends ConsumerWidget {
 
         // サーバー購入ボタン
         ElevatedButton.icon(
-          onPressed: state.ap > 0
+          onPressed: ApCostCalculator.canAfford(
+                  state.ap, state.config, ActionCategory.tech)
               ? () => _showPurchaseDialog(context, ref)
               : null,
           icon: const Icon(Icons.add_circle_outline, size: 18),
-          label: const Text('サーバーを購入する'),
+          label: Text(
+            'サーバーを購入する (AP${ApCostCalculator.cost(state.config, ActionCategory.tech)})',
+          ),
           style: ElevatedButton.styleFrom(
             minimumSize: const Size.fromHeight(44),
           ),
