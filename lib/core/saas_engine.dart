@@ -133,7 +133,7 @@ class SaaSEngine {
       trust: (state.trust + 5).clamp(0, 100),
       turnLog: [
         ...state.turnLog,
-        '${product.name}をリリースしました！ 初期ユーザー: 100人 (信頼度+5)',
+        '${product.name}をリリースしました！ 初期ユーザー: 50人 (信頼度+5)',
       ],
     );
   }
