@@ -249,7 +249,9 @@ class SaaSTab extends ConsumerWidget {
       BuildContext context, WidgetRef ref, SaaSProduct product) {
     final state = ref.read(gameProvider);
     final notifier = ref.read(gameProvider.notifier);
-    final unassigned = state.unassignedEmployees;
+    final unassigned = state.unassignedEmployees
+        .where((e) => e.isEngineer)
+        .toList();
 
     showModalBottomSheet(
       context: context,
@@ -276,7 +278,7 @@ class SaaSTab extends ConsumerWidget {
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text(
-                    '待機中の社員がいません',
+                    '待機中のエンジニアがいません',
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
                 )

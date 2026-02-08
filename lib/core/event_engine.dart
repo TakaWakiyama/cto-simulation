@@ -111,7 +111,7 @@ class EventEngine {
           EventChoice(
             id: 'hire_bonus',
             text: '採用ボーナスを出して引き抜く',
-            effects: {'money': -50},
+            effects: {},
             cost: 50,
           ),
           EventChoice(
@@ -133,7 +133,7 @@ class EventEngine {
           EventChoice(
             id: 'invest_security',
             text: 'セキュリティ対策に投資する',
-            effects: {'money': -30, 'trust': 5},
+            effects: {'trust': 5},
             cost: 30,
           ),
           EventChoice(
@@ -154,7 +154,7 @@ class EventEngine {
           EventChoice(
             id: 'attend',
             text: '参加する（社員の成長に繋がる）',
-            effects: {'money': -20, 'allHappiness': 10},
+            effects: {'allHappiness': 10},
             cost: 20,
             apCost: 1,
           ),
@@ -176,7 +176,7 @@ class EventEngine {
           EventChoice(
             id: 'aggressive',
             text: '積極的に営業をかける',
-            effects: {'trust': 5, 'money': -10},
+            effects: {'trust': 5},
             cost: 10,
             apCost: 1,
           ),
@@ -198,13 +198,13 @@ class EventEngine {
           EventChoice(
             id: 'team_building',
             text: 'チームビルディングイベントを開催',
-            effects: {'money': -15, 'allHappiness': 15, 'allFatigue': -20},
+            effects: {'allHappiness': 15, 'allFatigue': -20},
             cost: 15,
           ),
           EventChoice(
             id: 'bonus',
             text: '特別ボーナスを支給',
-            effects: {'money': -30, 'allHappiness': 20},
+            effects: {'allHappiness': 20},
             cost: 30,
           ),
           EventChoice(
@@ -293,7 +293,7 @@ class EventEngine {
           EventChoice(
             id: 'accept_change',
             text: '方針変更を受け入れる（コスト発生）',
-            effects: {'money': -50, 'trust': 3},
+            effects: {'trust': 3},
             cost: 50,
           ),
           EventChoice(
