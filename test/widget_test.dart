@@ -11,7 +11,7 @@ void main() {
       const config = GameConfig();
       final state = GameState.initial(config);
 
-      expect(state.money, 300);
+      expect(state.money, 600);
       expect(state.trust, 30);
       expect(state.ap, 3);
       expect(state.currentTurn, 1);
