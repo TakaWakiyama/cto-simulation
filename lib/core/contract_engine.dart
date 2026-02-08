@@ -110,19 +110,36 @@ class ContractEngine {
     );
   }
 
+  /// 納期超過で自動失敗になるまでのターン数
+  static const int overdueGraceTurns = 3;
+
   /// 案件の進捗処理（ターン終了時）
   static GameState processProjects(GameState state) {
     final log = <String>[];
     final completedProjectIds = <String>[];
+    final newlyOverdueIds = <String>[];
 
     var updatedProjects = state.contractProjects.map((project) {
-      if (project.status != ProjectStatus.inProgress) return project;
+      // 進行中・超過中の案件のみ進捗処理
+      if (project.status != ProjectStatus.inProgress &&
+          project.status != ProjectStatus.overdue) {
+        return project;
+      }
 
       // アサイン中の社員の生産力を合計
       final assignedEmployees = state.employees
           .where((e) => project.assignedEmployeeIds.contains(e.id));
 
-      if (assignedEmployees.isEmpty) return project;
+      if (assignedEmployees.isEmpty) {
+        // 超過判定だけ行う（社員がいなくても納期は進む）
+        if (project.status == ProjectStatus.inProgress &&
+            project.isOverdue(state.currentTurn)) {
+          newlyOverdueIds.add(project.id);
+          log.add('案件「${project.name}」が納期を超過しました！');
+          return project.copyWith(status: ProjectStatus.overdue);
+        }
+        return project;
+      }
 
       // テクノロジーボーナスの計算
       final techBonus = state.technologies
@@ -161,17 +178,16 @@ class ContractEngine {
       log.add(
           '「${project.name}」進捗: +$workDone (${updated.progress * 100 ~/ 1}%)');
 
-      // 完了判定
+      // 完了判定（超過中でも完了可能）
       if (updated.isCompleted) {
         updated = updated.copyWith(status: ProjectStatus.completed);
         completedProjectIds.add(updated.id);
         log.add('案件「${project.name}」が完了しました！');
-      }
-
-      // 納期超過判定
-      if (updated.isOverdue(state.currentTurn) &&
-          !updated.isCompleted) {
+      } else if (project.status == ProjectStatus.inProgress &&
+          updated.isOverdue(state.currentTurn)) {
+        // 新たに納期超過になった案件
         updated = updated.copyWith(status: ProjectStatus.overdue);
+        newlyOverdueIds.add(updated.id);
         log.add('案件「${project.name}」が納期を超過しました！');
       }
 
@@ -185,7 +201,6 @@ class ContractEngine {
 
     // 完了した案件の報酬処理とアサイン解除
     for (final projectId in completedProjectIds) {
-      // アサインされた社員を解放
       final project =
           updatedState.contractProjects.firstWhere((p) => p.id == projectId);
       for (final empId in project.assignedEmployeeIds) {
@@ -193,20 +208,107 @@ class ContractEngine {
       }
     }
 
-    // 納期超過のペナルティ
-    for (final project in updatedState.contractProjects) {
-      if (project.status == ProjectStatus.overdue) {
-        updatedState = updatedState.copyWith(
-          trust: (updatedState.trust - 2).clamp(0, 100),
-          turnLog: [
-            ...updatedState.turnLog,
-            '納期超過ペナルティ: 信頼度 -2',
-          ],
-        );
-      }
+    // 新たに納期超過になった案件のみペナルティ（毎ターン繰り返さない）
+    for (final projectId in newlyOverdueIds) {
+      final project =
+          updatedState.contractProjects.firstWhere((p) => p.id == projectId);
+      updatedState = updatedState.copyWith(
+        trust: (updatedState.trust - 2).clamp(0, 100),
+        turnLog: [
+          ...updatedState.turnLog,
+          '納期超過ペナルティ: 信頼度 -2 (「${project.name}」)',
+        ],
+      );
+    }
+
+    // 3ターン以上超過した案件を自動失敗
+    final autoFailProjects = updatedState.contractProjects
+        .where((p) =>
+            p.status == ProjectStatus.overdue &&
+            -(p.remainingTurns(updatedState.currentTurn)) >= overdueGraceTurns)
+        .toList();
+    for (final project in autoFailProjects) {
+      updatedState = _failProject(updatedState, project);
     }
 
     return updatedState;
+  }
+
+  /// 案件を失敗として処理（着手金没収・信頼度ペナルティ・社員解放）
+  static GameState _failProject(GameState state, ContractProject project) {
+    // 着手金分のペナルティ（返還義務）
+    final penalty = (project.reward * upfrontRate * 0.5).round();
+
+    var updatedState = state;
+
+    // アサインされた社員を解放
+    for (final empId in project.assignedEmployeeIds) {
+      updatedState = ContractEngine.unassignEmployee(updatedState, empId);
+    }
+
+    // プロジェクトを失敗に変更
+    final updatedProjects = updatedState.contractProjects.map((p) {
+      if (p.id == project.id) {
+        return p.copyWith(
+          status: ProjectStatus.failed,
+          assignedEmployeeIds: const [],
+        );
+      }
+      return p;
+    }).toList();
+
+    return updatedState.copyWith(
+      contractProjects: updatedProjects,
+      money: updatedState.money - penalty,
+      trust: (updatedState.trust - 5).clamp(0, 100),
+      turnLog: [
+        ...updatedState.turnLog,
+        '案件「${project.name}」が失敗しました（納期超過${overdueGraceTurns}ターン）。'
+            ' 違約金: -${penalty}万円, 信頼度: -5',
+      ],
+    );
+  }
+
+  /// 案件を破棄（プレイヤーによる手動破棄）
+  static GameState abandonProject(GameState state, String projectId) {
+    final project =
+        state.contractProjects.firstWhere((p) => p.id == projectId);
+
+    if (project.status != ProjectStatus.inProgress &&
+        project.status != ProjectStatus.overdue) {
+      return state;
+    }
+
+    // 着手金の半額を違約金として支払い
+    final penalty = (project.reward * upfrontRate * 0.5).round();
+
+    var updatedState = state;
+
+    // アサインされた社員を解放
+    for (final empId in project.assignedEmployeeIds) {
+      updatedState = ContractEngine.unassignEmployee(updatedState, empId);
+    }
+
+    // プロジェクトを失敗に変更
+    final updatedProjects = updatedState.contractProjects.map((p) {
+      if (p.id == projectId) {
+        return p.copyWith(
+          status: ProjectStatus.failed,
+          assignedEmployeeIds: const [],
+        );
+      }
+      return p;
+    }).toList();
+
+    return updatedState.copyWith(
+      contractProjects: updatedProjects,
+      money: updatedState.money - penalty,
+      trust: (updatedState.trust - 3).clamp(0, 100),
+      turnLog: [
+        ...updatedState.turnLog,
+        '案件「${project.name}」を破棄しました。 違約金: -${penalty}万円, 信頼度: -3',
+      ],
+    );
   }
 
   /// 案件の開発を進める（APを消費）

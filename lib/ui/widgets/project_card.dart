@@ -13,6 +13,7 @@ class ProjectCard extends StatelessWidget {
     this.onAccept,
     this.onAssign,
     this.onWork,
+    this.onAbandon,
   });
 
   final ContractProject project;
@@ -20,6 +21,7 @@ class ProjectCard extends StatelessWidget {
   final VoidCallback? onAccept;
   final VoidCallback? onAssign;
   final VoidCallback? onWork;
+  final VoidCallback? onAbandon;
 
   @override
   Widget build(BuildContext context) {
@@ -168,12 +170,28 @@ class ProjectCard extends StatelessWidget {
                     ),
                   ),
                 if (onAssign != null &&
-                    project.status == ProjectStatus.inProgress) ...[
+                    (project.status == ProjectStatus.inProgress ||
+                        project.status == ProjectStatus.overdue)) ...[
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: onAssign,
                       icon: const Icon(Icons.person_add, size: 16),
                       label: const Text('アサイン', style: TextStyle(fontSize: 12)),
+                    ),
+                  ),
+                ],
+                if (onAbandon != null &&
+                    (project.status == ProjectStatus.inProgress ||
+                        project.status == ProjectStatus.overdue)) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: onAbandon,
+                    icon: const Icon(Icons.cancel_outlined, size: 16,
+                        color: AppColors.red),
+                    label: const Text('破棄',
+                        style: TextStyle(fontSize: 12, color: AppColors.red)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.red),
                     ),
                   ),
                 ],

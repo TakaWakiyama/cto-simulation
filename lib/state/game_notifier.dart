@@ -86,8 +86,12 @@ class GameNotifier extends StateNotifier<GameState> {
   /// サーバー購入
   void purchaseServer(Server server) {
     if (!_canAfford(ActionCategory.tech)) return;
+    final prevCount = state.servers.length;
     state = InfraEngine.purchaseServer(state, server);
-    state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
+    // 購入が成功した場合のみAPを消費
+    if (state.servers.length > prevCount) {
+      state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
+    }
   }
 
   /// サーバー撤去
@@ -132,8 +136,12 @@ class GameNotifier extends StateNotifier<GameState> {
   /// 技術研究開始
   void startResearch(String techId) {
     if (!_canAfford(ActionCategory.tech)) return;
+    final prevMoney = state.money;
     state = TechTreeEngine.startResearch(state, techId);
-    state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
+    // 研究が成功した場合（資金が減った場合）のみAPを消費
+    if (state.money < prevMoney) {
+      state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
+    }
   }
 
   /// イベント選択肢の決定
@@ -204,6 +212,11 @@ class GameNotifier extends StateNotifier<GameState> {
   /// ローン繰上返済
   void earlyRepayLoan(String loanId) {
     state = FinanceEngine.earlyRepayLoan(state, loanId);
+  }
+
+  /// 案件を破棄
+  void abandonProject(String projectId) {
+    state = ContractEngine.abandonProject(state, projectId);
   }
 
   /// 特定アクションのAPコストを取得（UI表示用）
