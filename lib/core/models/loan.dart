@@ -2,9 +2,9 @@ import 'package:flutter/foundation.dart';
 
 /// ローンのサイズ
 enum LoanSize {
-  small('小口融資', 100, 0.05, 12),
-  medium('中口融資', 300, 0.07, 24),
-  large('大口融資', 500, 0.10, 36);
+  small('小口融資', 100, 0.005, 12),
+  medium('中口融資', 300, 0.01, 24),
+  large('大口融資', 500, 0.02, 36);
 
   const LoanSize(this.label, this.amount, this.monthlyRate, this.termMonths);
   final String label;

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/ap_cost_calculator.dart';
 import '../../core/infra_engine.dart';
 import '../../core/models/ceo_background.dart';
+import '../../core/models/office.dart';
 import '../../core/models/server.dart';
 import '../../state/game_notifier.dart';
 import '../theme/app_colors.dart';
@@ -113,6 +114,7 @@ class InfraTab extends ConsumerWidget {
   }
 
   void _showPurchaseDialog(BuildContext context, WidgetRef ref) {
+    final state = ref.read(gameProvider);
     final notifier = ref.read(gameProvider.notifier);
     final available = InfraEngine.getAvailableServers();
 
@@ -143,9 +145,9 @@ class InfraTab extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    '初期費用: 月額の3ヶ月分',
-                    style: TextStyle(
+                  Text(
+                    '初期費用: 月額の3ヶ月分（所持金: ${state.money}万円）',
+                    style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     ),
@@ -156,6 +158,7 @@ class InfraTab extends ConsumerWidget {
                       controller: scrollController,
                       children: available.map((server) {
                         final purchaseCost = server.monthlyCost * 3;
+                        final canAfford = state.money >= purchaseCost;
                         return Card(
                           child: ListTile(
                             leading: Icon(
@@ -168,12 +171,14 @@ class InfraTab extends ConsumerWidget {
                               style: const TextStyle(fontSize: 11),
                             ),
                             trailing: ElevatedButton(
-                              onPressed: () {
-                                notifier.purchaseServer(server.copyWith(
-                                  id: 'srv_${DateTime.now().millisecondsSinceEpoch}',
-                                ));
-                                Navigator.pop(ctx);
-                              },
+                              onPressed: canAfford
+                                  ? () {
+                                      notifier.purchaseServer(server.copyWith(
+                                        id: 'srv_${DateTime.now().millisecondsSinceEpoch}',
+                                      ));
+                                      Navigator.pop(ctx);
+                                    }
+                                  : null,
                               child: Text('${purchaseCost}万',
                                   style: const TextStyle(fontSize: 12)),
                             ),

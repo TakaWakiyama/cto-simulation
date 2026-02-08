@@ -74,7 +74,11 @@ class GameState {
   int get totalServerCost => servers.fold(0, (sum, s) => sum + s.monthlyCost);
   int get officeCost => office?.monthlyCost ?? 0;
 
-  int get totalMonthlyCost => totalSalary + totalServerCost + officeCost;
+  int get saasMaintenanceCost =>
+      saasProducts.where((p) => p.isLaunched).fold(0, (sum, p) => sum + p.monthlyMaintenanceCost);
+
+  int get totalMonthlyCost =>
+      totalSalary + totalServerCost + officeCost + saasMaintenanceCost;
 
   int get saasRevenue =>
       saasProducts.fold(0, (sum, p) => sum + p.monthlyRevenue);

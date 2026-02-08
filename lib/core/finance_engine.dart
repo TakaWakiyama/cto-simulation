@@ -25,7 +25,7 @@ class FinanceEngine {
       money: state.money + size.amount,
       turnLog: [
         ...state.turnLog,
-        '${size.label}で${size.amount}万円を借入しました（月利${(size.monthlyRate * 100).toStringAsFixed(0)}%、${size.termMonths}ターン返済）',
+        '${size.label}で${size.amount}万円を借入しました（月利${(size.monthlyRate * 100).toStringAsFixed(1)}%、${size.termMonths}ターン返済）',
       ],
     );
   }

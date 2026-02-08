@@ -162,14 +162,18 @@ class ContractEngine {
             .clamp(0, project.totalWork),
       );
 
-      // 品質スコアの計算（スキルと疲労に基づく）
+      // 品質スコアの計算（スキルと疲労とテクノロジーボーナスに基づく）
       final avgSkill = assignedEmployees.fold(0, (sum, e) => sum + e.skill) /
           assignedEmployees.length;
       final avgFatigue =
           assignedEmployees.fold(0, (sum, e) => sum + e.fatigue) /
               assignedEmployees.length;
+      final techQualityBonus = state.technologies
+          .where((t) => t.isUnlocked)
+          .fold(0, (sum, t) => sum + t.qualityBonus);
       final qualityDelta =
-          ((avgSkill - 50) / 10 - avgFatigue / 20).round();
+          ((avgSkill - 50) / 10 - avgFatigue / 20 + techQualityBonus / 10)
+              .round();
       updated = updated.copyWith(
         qualityScore:
             (updated.qualityScore + qualityDelta).clamp(0, 100),

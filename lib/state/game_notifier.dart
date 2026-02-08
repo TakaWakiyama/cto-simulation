@@ -16,6 +16,7 @@ import '../core/models/equity_round.dart';
 import '../core/models/event.dart';
 import '../core/models/game_config.dart';
 import '../core/models/loan.dart';
+import '../core/models/office.dart';
 import '../core/models/server.dart';
 import '../core/saas_engine.dart';
 import '../core/tech_tree_engine.dart';
@@ -221,6 +222,33 @@ class GameNotifier extends StateNotifier<GameState> {
 
   /// 特定アクションのAPコストを取得（UI表示用）
   int getActionApCost(ActionCategory category) => _apCost(category);
+
+  /// オフィスアップグレード
+  void upgradeOffice(Office newOffice) {
+    if (!_canAfford(ActionCategory.management)) return;
+
+    final upgradeCost = newOffice.upgradeCost;
+    if (state.money < upgradeCost) {
+      state = state.copyWith(
+        turnLog: [
+          ...state.turnLog,
+          'オフィス移転費用（${upgradeCost}万円）が不足しています。',
+        ],
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      office: () => newOffice,
+      money: state.money - upgradeCost,
+      ap: state.ap - _apCost(ActionCategory.management),
+      turnLog: [
+        ...state.turnLog,
+        '${newOffice.name}に移転しました！ -${upgradeCost}万円'
+            ' (社員上限: ${newOffice.maxEmployees}人, 月額: ${newOffice.monthlyCost}万円)',
+      ],
+    );
+  }
 
   /// ログをクリア
   void clearLog() {

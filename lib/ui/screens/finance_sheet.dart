@@ -352,7 +352,7 @@ class _LoanOption extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '月利${(size.monthlyRate * 100).toStringAsFixed(0)}% / ${size.termMonths}ターン返済',
+                      '月利${(size.monthlyRate * 100).toStringAsFixed(1)}% / ${size.termMonths}ターン返済',
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary,
