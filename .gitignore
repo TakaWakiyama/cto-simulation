@@ -50,3 +50,4 @@ test/simulation/output/
 # Misc
 *.skill
 after_click_normal.png
+.parallel-agents/
