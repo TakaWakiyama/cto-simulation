@@ -392,6 +392,18 @@ int get totalMonthlyCost =>
 - SaaS製品リリース後、月次経費にメンテナンスコストが反映される
 - UIの経費表示が実態と一致する
 
+### 補足: 経費ログの更新
+
+`economy_engine.dart:processMonthlyExpenses` L18 のログ行:
+```dart
+'月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost})'
+```
+
+SaaS保守費用を含めるため、以下に更新:
+```dart
+'月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost}, SaaS保守: ${state.totalSaaSMaintenanceCost})'
+```
+
 ### テスト方法
 
 ```dart
@@ -615,3 +627,36 @@ test('オフィスアップグレードが正しく適用される', () {
 1. **Critical (P1):** 001, 002, 003 — ゲーム進行に致命的なバグ
 2. **High (P2):** 004, 005, 006 — ゲームバランスに影響
 3. **Medium (P3):** 007, 008, 009 — バランス改善・UX向上
+
+---
+
+## 追加発見事項（今回のスコープ外）
+
+コードレビュー中に発見した追加の改善候補。将来タスクとして参照。
+
+### A. 残業指示の効果が不完全
+
+`employee_engine.dart:orderOvertime` (L159-183):
+- 疲労増加と幸福度低下は行うが、プロジェクトの作業進捗に反映されていない
+- APを消費するがプロジェクトの `currentWork` は増えない
+- `contract_engine.dart:workOnProject` (L213-231) も同様にAPだけ消費して何もしない
+
+### B. イベント抽選の順序依存性
+
+`event_engine.dart:rollEvent` (L22-29):
+- `eligibleEvents` をリスト順に走査し、最初に確率をパスしたイベントを返す
+- リスト先頭のイベント（`evt_talent_market`, probability: 0.3）が最も発火しやすい
+- よりフェアな抽選にするには、確率に基づく重み付き抽選が望ましい
+
+### C. SaaS開発中社員の判定がproject.idベース
+
+`saas_engine.dart:processSaaS` (L74-75):
+- `e.assignedProjectId == product.id` で開発社員を判定
+- しかし `assignedProjectId` は受託案件のアサインで使用される前提のフィールド
+- SaaS専用のアサイン機構が未実装の可能性がある（UIで確認必要）
+
+### D. 案件生成の擬似ランダム
+
+`contract_engine.dart:generateProjects` (L283):
+- `DateTime.now().millisecondsSinceEpoch` を直接使っており、テスト時に結果が不安定
+- `Random` インスタンスを注入可能にすべき
