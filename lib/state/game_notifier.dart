@@ -206,6 +206,11 @@ class GameNotifier extends StateNotifier<GameState> {
     state = FinanceEngine.earlyRepayLoan(state, loanId);
   }
 
+  /// 案件を破棄
+  void abandonProject(String projectId) {
+    state = ContractEngine.abandonProject(state, projectId);
+  }
+
   /// 特定アクションのAPコストを取得（UI表示用）
   int getActionApCost(ActionCategory category) => _apCost(category);
 

@@ -94,7 +94,9 @@ class GameState {
       : employees.fold(0.0, (sum, e) => sum + e.fatigue) / employees.length;
 
   List<ContractProject> get activeProjects => contractProjects
-      .where((p) => p.status == ProjectStatus.inProgress)
+      .where((p) =>
+          p.status == ProjectStatus.inProgress ||
+          p.status == ProjectStatus.overdue)
       .toList();
 
   List<ContractProject> get availableProjects => contractProjects

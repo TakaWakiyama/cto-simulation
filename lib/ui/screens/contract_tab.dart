@@ -21,8 +21,7 @@ class ContractTab extends ConsumerWidget {
     final completedProjects = state.contractProjects
         .where((p) =>
             p.status == ProjectStatus.completed ||
-            p.status == ProjectStatus.failed ||
-            p.status == ProjectStatus.overdue)
+            p.status == ProjectStatus.failed)
         .toList();
 
     return ListView(
@@ -39,6 +38,7 @@ class ContractTab extends ConsumerWidget {
                 project: project,
                 currentTurn: state.currentTurn,
                 onAssign: () => _showAssignDialog(context, ref, project),
+                onAbandon: () => _showAbandonDialog(context, ref, project),
               )),
           const SizedBox(height: 16),
         ],
@@ -95,6 +95,43 @@ class ContractTab extends ConsumerWidget {
               )),
         ],
       ],
+    );
+  }
+
+  void _showAbandonDialog(
+    BuildContext context,
+    WidgetRef ref,
+    ContractProject project,
+  ) {
+    final notifier = ref.read(gameProvider.notifier);
+    final penalty =
+        (project.reward * 0.3 * 0.5).round(); // upfrontRate * 0.5
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('案件を破棄しますか？'),
+        content: Text(
+          '「${project.name}」を破棄します。\n'
+          '違約金: ${penalty}万円\n'
+          '信頼度: -3',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () {
+              notifier.abandonProject(project.id);
+              Navigator.pop(ctx);
+            },
+            style: TextButton.styleFrom(foregroundColor: AppColors.red),
+            child: const Text('破棄する'),
+          ),
+        ],
+      ),
     );
   }
 
