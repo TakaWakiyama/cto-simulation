@@ -133,9 +133,9 @@ class GameSimulator {
     }
 
     print('');
-    print('${'═' * 56}');
+    print('═' * 56);
     print('  $botName ($n回実行)');
-    print('${'═' * 56}');
+    print('═' * 56);
     print('  生存率(120T):     ${(survived / n * 100).toStringAsFixed(1)}%');
     print('  破産率:           ${(bankrupted / n * 100).toStringAsFixed(1)}%');
     print('  平均生存ターン:   ${avgTurns.toStringAsFixed(1)}T');
@@ -153,21 +153,21 @@ class GameSimulator {
         print('    ${entry.key}: ${entry.value}回');
       }
     }
-    print('${'─' * 56}');
+    print('─' * 56);
   }
 
   /// 全botの比較テーブルを出力
   static void printComparison(Map<String, List<SimulationResult>> allResults) {
     print('');
-    print('${'═' * 70}');
+    print('═' * 70);
     print('  全Bot比較サマリー');
-    print('${'═' * 70}');
+    print('═' * 70);
     print('  ${'Bot名'.padRight(12)}'
         '${'生存率'.padRight(10)}'
         '${'破産率'.padRight(10)}'
         '${'平均ターン'.padRight(12)}'
         '${'平均損益'.padRight(12)}');
-    print('${'─' * 70}');
+    print('─' * 70);
 
     for (final entry in allResults.entries) {
       final results = entry.value;
@@ -187,6 +187,6 @@ class GameSimulator {
           '${('${avgTurns.toStringAsFixed(1)}T').padRight(12)}'
           '${('${(avgRevenue - avgExpense).toStringAsFixed(0)}万円').padRight(12)}');
     }
-    print('${'═' * 70}');
+    print('═' * 70);
   }
 }

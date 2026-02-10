@@ -1,0 +1,161 @@
+# parallel-agents.yaml
+# CTO Simulator 改善プロジェクト - 並列エージェント設定
+
+project:
+  name: "cto-simulator-improvement"
+  main_branch: "main"
+
+agents:
+  - name: "planner"
+    role: "Game Designer / Planner"
+    description: |
+      ゲームデザイナー兼企画者。バグ修正の方針決定、ゲームバランス調整の数値設計、
+      新機能の仕様策定を担当する。実装はせず、PLAN.mdに設計書を書き、
+      implementerが参照できるようにする。
+    branch: "agent/planner"
+    model: "claude-opus-4-6"
+    focus_paths:
+      - "lib/core/"
+      - "docs/"
+    extra_instructions: |
+      あなたはゲームデザイナーです。コードを直接書くのではなく、設計ドキュメントを作成してください。
+      各タスクについて以下を記述:
+      1. 問題の根本原因
+      2. 修正方針（具体的な変更箇所と変更内容）
+      3. 期待される結果
+      4. テスト方法
+      PLAN.mdに記述し、完了したらPROGRESS.mdを更新してください。
+      CLAUDE.mdのアーキテクチャ規約（copyWithパターン、レイヤー分離等）に従った設計をすること。
+
+  - name: "implementer"
+    role: "Feature Implementer"
+    description: |
+      実装担当。plannerが設計した修正方針に基づいてコードを修正・追加する。
+      バグ修正、ゲームバランス調整、新機能実装を行う。
+    branch: "agent/implementer"
+    model: "claude-opus-4-6"
+    focus_paths:
+      - "lib/core/"
+      - "lib/state/"
+      - "lib/ui/"
+    extra_instructions: |
+      あなたは実装担当です。CLAUDE.mdの規約に厳密に従ってください:
+      - importはファイル先頭に記述（途中import禁止）
+      - copyWithパターンでimmutable状態管理
+      - nullable copyWithは Function()? パターン
+      - core/はFlutter依存なし
+      - UIロジックはstate/経由でのみcore/を操作
+      タスクを完了したらflutter analyzeで確認し、PROGRESS.mdを更新してください。
+
+  - name: "tester"
+    role: "Test Engineer & QA"
+    description: |
+      テスト担当兼品質管理。バグの再現テスト、修正後の動作確認テスト、
+      ゲームバランスの数値検証テストを作成・実行する。
+    branch: "agent/tester"
+    model: "claude-opus-4-6"
+    focus_paths:
+      - "test/"
+      - "lib/core/"
+    extra_instructions: |
+      あなたはテストエンジニアです。以下の方針でテストを書いてください:
+      - core/のロジックに対するユニットテストを重点的に
+      - エッジケース（資金0、AP0、社員0等）を必ずカバー
+      - バグ修正には対応する回帰テストを書く
+      - flutter testで全テストが通ることを確認
+      - テスト結果をPROGRESS.mdに記録
+
+tasks:
+  - id: "001"
+    title: "BUG-01: イベントのコスト二重減算を修正"
+    description: |
+      event_engine.dart の applyEventChoice で choice.cost と choice.effects['money'] が
+      二重に減算される。例: cost:30 + effects:money:-30 = 合計-60万円。
+      修正方針: effects['money']を削除するか、costを0にする。
+      対象: lib/core/event_engine.dart, lib/core/event_table.dart
+    priority: 1
+
+  - id: "002"
+    title: "BUG-03: 納期超過ペナルティの無限ループを修正"
+    description: |
+      contract_engine.dart で overdue案件に毎ターン trust-2 が適用され続ける。
+      案件を破棄する手段がないため、overdue蓄積でゲームオーバー不可避。
+      修正: overdue案件の自動失敗処理（3ターン後に強制失敗）、またはプレイヤーに破棄機能を追加。
+      対象: lib/core/contract_engine.dart, lib/state/game_notifier.dart, lib/ui/screens/contract_tab.dart
+    priority: 1
+
+  - id: "003"
+    title: "BUG-12: サーバー購入・研究開始時のAP無条件消費を修正"
+    description: |
+      game_notifier.dart の purchaseServer/startResearch で、
+      実際の処理が失敗してもAPが消費される。hireEmployeeと同じパターンで修正。
+      対象: lib/state/game_notifier.dart
+    priority: 1
+
+  - id: "004"
+    title: "BUG-04: SaaSリリース時のユーザー数ログ不一致を修正"
+    description: |
+      saas_engine.dart でリリース時 totalUsers=50 なのにログでは「100人」と表示。
+      どちらかに統一する（50人に統一推奨）。
+      対象: lib/core/saas_engine.dart
+    priority: 2
+
+  - id: "005"
+    title: "BUG-10: qualityBonusをプロジェクト品質計算に反映"
+    description: |
+      テクノロジーの qualityBonus が品質計算に使われていない。
+      contract_engine.dart の品質スコア計算にテクノロジーボーナスを反映。
+      対象: lib/core/contract_engine.dart, lib/core/game_state.dart
+    priority: 2
+
+  - id: "006"
+    title: "BUG-13: SaaS保守費用を月次経費に含める"
+    description: |
+      game_state.dart の totalMonthlyCost に SaaS保守費用が含まれていない。
+      totalMonthlyCost の計算に saasProducts の monthlyMaintenanceCost を追加。
+      対象: lib/core/game_state.dart
+    priority: 2
+
+  - id: "007"
+    title: "BAL-02: ローン月利を現実的な水準に調整"
+    description: |
+      現在の月利5-10%は年利60-120%で暴利。月利0.5-2%に調整。
+      finance_engine.dart のローンオプション定義を修正。
+      対象: lib/core/finance_engine.dart
+    priority: 3
+
+  - id: "008"
+    title: "UI改善: サーバー購入時の資金チェック追加 + アサインのエンジニアフィルター"
+    description: |
+      - infra_tab.dart: サーバー購入ボタンに資金チェック追加
+      - contract_tab.dart, saas_tab.dart: アサインダイアログでエンジニアのみ表示
+      対象: lib/ui/screens/infra_tab.dart, contract_tab.dart, saas_tab.dart
+    priority: 3
+
+  - id: "009"
+    title: "FUN: オフィスアップグレード機能の実装"
+    description: |
+      現在ガレージオフィスのみ。複数のオフィスグレード（ガレージ→コワーキング→小規模オフィス→中規模オフィス）を
+      追加し、社員上限・幸福度ボーナス・月額コストが変わるようにする。
+      インフラタブからアップグレード可能にする。
+      対象: lib/core/game_state.dart, lib/core/models/, lib/state/game_notifier.dart, lib/ui/screens/infra_tab.dart
+    priority: 3
+
+  - id: "010"
+    title: "テスト: 全バグ修正の回帰テスト作成"
+    description: |
+      修正された全バグに対する回帰テストを作成。
+      - イベントコスト計算テスト
+      - 納期超過処理テスト
+      - AP消費条件テスト
+      - SaaS保守費用テスト
+      - ローン利率テスト
+      - 品質ボーナス計算テスト
+      対象: test/
+    priority: 2
+    depends_on: ["001", "002", "003", "004", "005", "006"]
+
+settings:
+  max_budget_usd: 15
+  dangerously_skip_permissions: true
+  auto_commit: true

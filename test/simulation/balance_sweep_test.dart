@@ -111,9 +111,9 @@ void main() {
     final workMultipliers = [1.0, 0.5, 0.33];
 
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
     print('  パラメータスイープ: GreedyBot ($iterations回/条件)');
-    print('${'═' * 80}');
+    print('═' * 80);
 
     // ヘッダー
     final header = StringBuffer('  ${'報酬＼工数'.padRight(14)}');
@@ -121,7 +121,7 @@ void main() {
       header.write('工数×${wm.toStringAsFixed(2).padRight(10)}');
     }
     print(header);
-    print('${'─' * 80}');
+    print('─' * 80);
 
     // グリッド
     for (final rm in rewardMultipliers) {
@@ -147,15 +147,15 @@ void main() {
       print(row);
     }
 
-    print('${'═' * 80}');
+    print('═' * 80);
     print('  (生存率% / 平均生存ターン)');
     print('');
 
     // 有望な組み合わせの詳細表示
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
     print('  有望パラメータの詳細（全4bot比較）');
-    print('${'═' * 80}');
+    print('═' * 80);
 
     final promising = [
       (3.0, 0.5),
@@ -222,6 +222,6 @@ void main() {
     }
 
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
   });
 }

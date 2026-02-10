@@ -1,16 +1,31 @@
 # cto_simulator
 
-A new Flutter project.
+Local build and deployment helpers for this Flutter app.
 
-## Getting Started
+## iPhone (USB) local deploy
 
-This project is a starting point for a Flutter application.
+Use this when your iPhone is connected by cable:
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+bash scripts/deploy_ios_device.sh
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+If signing is not configured yet, open `ios/Runner.xcworkspace` in Xcode once,
+set `Signing & Capabilities` for `Runner`, then run the script again.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Same network distribution (LAN)
+
+Build web and share it on your local network:
+
+```bash
+bash scripts/share_web_on_lan.sh 8080
+```
+
+Then open the printed URL from your phone (same Wi-Fi), for example:
+`http://192.168.x.x:8080`
+
+## Standard Flutter commands
+
+- `flutter pub get`
+- `flutter analyze`
+- `flutter test`

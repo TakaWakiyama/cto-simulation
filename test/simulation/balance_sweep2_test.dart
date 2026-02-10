@@ -127,16 +127,16 @@ void main() {
     final workMultipliers = [0.5, 0.33, 0.25];
 
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
     print('  拡張パラメータスイープ: GreedyBot ($iterations回/条件)');
-    print('${'═' * 80}');
+    print('═' * 80);
 
     final header = StringBuffer('  ${'報酬＼工数'.padRight(14)}');
     for (final wm in workMultipliers) {
       header.write('工数×${wm.toStringAsFixed(2).padRight(12)}');
     }
     print(header);
-    print('${'─' * 80}');
+    print('─' * 80);
 
     for (final rm in rewardMultipliers) {
       final row = StringBuffer('  報酬×${rm.toStringAsFixed(0).padLeft(2).padRight(10)}');
@@ -157,20 +157,20 @@ void main() {
       }
       print(row);
     }
-    print('${'═' * 80}');
+    print('═' * 80);
 
     // MultiProjectBot（複数案件同時受注）も比較
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
     print('  MultiProjectBot（複数案件同時受注） ($iterations回/条件)');
-    print('${'═' * 80}');
+    print('═' * 80);
 
     final header2 = StringBuffer('  ${'報酬＼工数'.padRight(14)}');
     for (final wm in workMultipliers) {
       header2.write('工数×${wm.toStringAsFixed(2).padRight(12)}');
     }
     print(header2);
-    print('${'─' * 80}');
+    print('─' * 80);
 
     for (final rm in rewardMultipliers) {
       final row = StringBuffer('  報酬×${rm.toStringAsFixed(0).padLeft(2).padRight(10)}');
@@ -191,13 +191,13 @@ void main() {
       }
       print(row);
     }
-    print('${'═' * 80}');
+    print('═' * 80);
 
     // ベストな組み合わせの詳細
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
     print('  有望パラメータ 詳細比較（全bot）');
-    print('${'═' * 80}');
+    print('═' * 80);
 
     final promising = [
       (5.0, 0.33),
@@ -252,9 +252,9 @@ void main() {
 
     // 死因分析
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
     print('  死因分析 (報酬×7 / 工数×0.33 / GreedyBot)');
-    print('${'═' * 80}');
+    print('═' * 80);
     {
       final bot = TweakedBot(
           inner: GreedyBot(), rewardMultiplier: 7, workMultiplier: 0.33);
@@ -274,6 +274,6 @@ void main() {
     }
 
     print('');
-    print('${'═' * 80}');
+    print('═' * 80);
   });
 }

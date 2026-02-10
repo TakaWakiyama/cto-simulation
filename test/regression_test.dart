@@ -10,12 +10,14 @@ import 'package:cto_simulator/core/saas_engine.dart';
 import 'package:cto_simulator/core/tech_tree_engine.dart';
 import 'package:cto_simulator/core/models/contract_project.dart';
 import 'package:cto_simulator/core/models/employee.dart';
+import 'package:cto_simulator/core/models/employee_type.dart';
 import 'package:cto_simulator/core/models/event.dart';
 import 'package:cto_simulator/core/models/game_config.dart';
 import 'package:cto_simulator/core/models/loan.dart';
 import 'package:cto_simulator/core/models/saas_product.dart';
 import 'package:cto_simulator/core/models/server.dart';
 import 'package:cto_simulator/core/models/technology.dart';
+import 'package:cto_simulator/state/game_notifier.dart';
 
 /// Helper to create a default GameState for testing
 GameState _createTestState({
@@ -108,75 +110,92 @@ void main() {
       );
     });
 
-    test('applyEventChoice with only cost (no money effect) deducts correctly', () {
-      final state = _createTestState(money: 500);
-      final event = GameEvent(
-        id: 'test_event_2',
-        title: 'テスト',
-        description: 'テスト',
-        type: EventType.opportunity,
-        choices: [
-          const EventChoice(
-            id: 'choice_1',
-            text: 'コストのみ',
-            effects: {'trust': 5},
-            cost: 30,
-          ),
-        ],
-      );
+    test(
+      'applyEventChoice with only cost (no money effect) deducts correctly',
+      () {
+        final state = _createTestState(money: 500);
+        final event = GameEvent(
+          id: 'test_event_2',
+          title: 'テスト',
+          description: 'テスト',
+          type: EventType.opportunity,
+          choices: [
+            const EventChoice(
+              id: 'choice_1',
+              text: 'コストのみ',
+              effects: {'trust': 5},
+              cost: 30,
+            ),
+          ],
+        );
 
-      final result = EventEngine.applyEventChoice(
-        state,
-        event,
-        event.choices[0],
-      );
+        final result = EventEngine.applyEventChoice(
+          state,
+          event,
+          event.choices[0],
+        );
 
-      expect(result.money, 470);
-      expect(result.trust, 55);
-    });
+        expect(result.money, 470);
+        expect(result.trust, 55);
+      },
+    );
 
-    test('applyEventChoice with zero cost and money effect applies correctly', () {
-      final state = _createTestState(money: 500);
-      final event = GameEvent(
-        id: 'test_event_3',
-        title: 'テスト',
-        description: 'テスト',
-        type: EventType.opportunity,
-        choices: [
-          const EventChoice(
-            id: 'choice_1',
-            text: '報酬のみ',
-            effects: {'money': 100},
-          ),
-        ],
-      );
+    test(
+      'applyEventChoice with zero cost and money effect applies correctly',
+      () {
+        final state = _createTestState(money: 500);
+        final event = GameEvent(
+          id: 'test_event_3',
+          title: 'テスト',
+          description: 'テスト',
+          type: EventType.opportunity,
+          choices: [
+            const EventChoice(
+              id: 'choice_1',
+              text: '報酬のみ',
+              effects: {'money': 100},
+            ),
+          ],
+        );
 
-      final result = EventEngine.applyEventChoice(
-        state,
-        event,
-        event.choices[0],
-      );
+        final result = EventEngine.applyEventChoice(
+          state,
+          event,
+          event.choices[0],
+        );
 
-      expect(result.money, 600);
-    });
+        expect(result.money, 600);
+      },
+    );
 
-    test('real event data: talent market hire_bonus has overlapping cost and effect', () {
-      // Verify the actual event data exhibits the double-deduction bug
-      final events = EventEngine.getDefaultEvents();
-      final talentMarket = events.firstWhere((e) => e.id == 'evt_talent_market');
-      final hireChoice = talentMarket.choices.firstWhere((c) => c.id == 'hire_bonus');
+    test(
+      'real event data: talent market hire_bonus has overlapping cost and effect',
+      () {
+        // Verify the actual event data exhibits the double-deduction bug
+        final events = EventEngine.getDefaultEvents();
+        final talentMarket = events.firstWhere(
+          (e) => e.id == 'evt_talent_market',
+        );
+        final hireChoice = talentMarket.choices.firstWhere(
+          (c) => c.id == 'hire_bonus',
+        );
 
-      // This event has cost:50 AND effects:{'money': -50} - double deduction
-      final state = _createTestState(money: 500);
-      final result = EventEngine.applyEventChoice(state, talentMarket, hireChoice);
+        // This event has cost:50 AND effects:{'money': -50} - double deduction
+        final state = _createTestState(money: 500);
+        final result = EventEngine.applyEventChoice(
+          state,
+          talentMarket,
+          hireChoice,
+        );
 
-      // After BUG-01 fix, expect 450 (single deduction of 50)
-      expect(
-        result.money,
-        450,
-        reason: 'evt_talent_market hire_bonus should deduct 50 once, not 100',
-      );
-    });
+        // After BUG-01 fix, expect 450 (single deduction of 50)
+        expect(
+          result.money,
+          450,
+          reason: 'evt_talent_market hire_bonus should deduct 50 once, not 100',
+        );
+      },
+    );
 
     test('applyEventChoice correctly applies AP cost', () {
       final state = _createTestState(ap: 3);
@@ -195,7 +214,11 @@ void main() {
         ],
       );
 
-      final result = EventEngine.applyEventChoice(state, event, event.choices[0]);
+      final result = EventEngine.applyEventChoice(
+        state,
+        event,
+        event.choices[0],
+      );
       expect(result.ap, 2);
     });
   });
@@ -244,47 +267,52 @@ void main() {
       // After fix, either:
       // - The project status should change to 'failed'
       // - Or trust should not drop below a reasonable floor from this bug
-      final hasFailedProject = currentState.contractProjects
-          .any((p) => p.id == 'proj_overdue' && p.status == ProjectStatus.failed);
+      final hasFailedProject = currentState.contractProjects.any(
+        (p) => p.id == 'proj_overdue' && p.status == ProjectStatus.failed,
+      );
 
       // After fix, overdue should auto-fail (3 turns past deadline)
       expect(
         hasFailedProject,
         true,
-        reason: 'Overdue projects should auto-fail after excessive overdue turns',
+        reason:
+            'Overdue projects should auto-fail after excessive overdue turns',
       );
     });
 
-    test('overdue penalty applies trust -2 only when project newly becomes overdue', () {
-      // Project that will become overdue this turn (inProgress + just past deadline)
-      // deadline=8, startTurn=1, currentTurn=10 → remainingTurns = 8-(10-1) = -1
-      // -(-1)=1 < 3 (grace), so NO auto-fail, only the -2 penalty
-      final project = ContractProject(
-        id: 'proj_1',
-        name: 'テスト案件',
-        type: ProjectType.webApp,
-        clientName: 'テスト',
-        reward: 500,
-        requiredSkill: 30,
-        totalWork: 100,
-        deadline: 8,
-        currentWork: 10,
-        status: ProjectStatus.inProgress,
-        startTurn: 1,
-        assignedEmployeeIds: [],
-      );
+    test(
+      'overdue penalty applies trust -2 only when project newly becomes overdue',
+      () {
+        // Project that will become overdue this turn (inProgress + just past deadline)
+        // deadline=8, startTurn=1, currentTurn=10 → remainingTurns = 8-(10-1) = -1
+        // -(-1)=1 < 3 (grace), so NO auto-fail, only the -2 penalty
+        final project = ContractProject(
+          id: 'proj_1',
+          name: 'テスト案件',
+          type: ProjectType.webApp,
+          clientName: 'テスト',
+          reward: 500,
+          requiredSkill: 30,
+          totalWork: 100,
+          deadline: 8,
+          currentWork: 10,
+          status: ProjectStatus.inProgress,
+          startTurn: 1,
+          assignedEmployeeIds: [],
+        );
 
-      final state = _createTestState(
-        trust: 50,
-        currentTurn: 10, // just past deadline (overdue by 1 turn)
-        contractProjects: [project],
-      );
+        final state = _createTestState(
+          trust: 50,
+          currentTurn: 10, // just past deadline (overdue by 1 turn)
+          contractProjects: [project],
+        );
 
-      final result = ContractEngine.processProjects(state);
+        final result = ContractEngine.processProjects(state);
 
-      // Newly overdue project should get -2 trust penalty only
-      expect(result.trust, 48);
-    });
+        // Newly overdue project should get -2 trust penalty only
+        expect(result.trust, 48);
+      },
+    );
 
     test('already overdue projects do not repeat trust penalty', () {
       // Already overdue project should NOT get additional -2 each turn
@@ -353,17 +381,16 @@ void main() {
       final result = SaaSEngine.launchProduct(state, 'saas_test');
 
       // Get the launched product
-      final launchedProduct =
-          result.saasProducts.firstWhere((p) => p.id == 'saas_test');
+      final launchedProduct = result.saasProducts.firstWhere(
+        (p) => p.id == 'saas_test',
+      );
 
       // BUG: totalUsers is set to 50 but log says "100人"
       // EXPECTED: Log should say "50人" to match totalUsers
       expect(launchedProduct.totalUsers, 50);
 
       // Check that the log matches the actual user count
-      final launchLog = result.turnLog.where(
-        (log) => log.contains('リリース'),
-      );
+      final launchLog = result.turnLog.where((log) => log.contains('リリース'));
       expect(launchLog, isNotEmpty);
 
       // The log should contain "50人", not "100人"
@@ -371,7 +398,8 @@ void main() {
       expect(
         logText.contains('50人'),
         true,
-        reason: 'Launch log should say 50人 to match actual totalUsers, not 100人',
+        reason:
+            'Launch log should say 50人 to match actual totalUsers, not 100人',
       );
     });
   });
@@ -441,7 +469,9 @@ void main() {
         ],
       );
 
-      final resultWithoutTech = ContractEngine.processProjects(stateWithoutTech);
+      final resultWithoutTech = ContractEngine.processProjects(
+        stateWithoutTech,
+      );
       final resultWithTech = ContractEngine.processProjects(stateWithTech);
 
       final qualityWithout = resultWithoutTech.contractProjects
@@ -457,7 +487,8 @@ void main() {
       expect(
         qualityWith > qualityWithout,
         true,
-        reason: 'Unlocked technology qualityBonus should improve project quality score',
+        reason:
+            'Unlocked technology qualityBonus should improve project quality score',
       );
     });
   });
@@ -494,17 +525,21 @@ void main() {
       expect(
         totalCost,
         greaterThan(salaryOnly),
-        reason: 'totalMonthlyCost should include SaaS maintenance cost on top of salary',
+        reason:
+            'totalMonthlyCost should include SaaS maintenance cost on top of salary',
       );
 
       // Specifically check the maintenance is included
-      final saasMaintenanceCost = state.saasProducts
-          .fold(0, (sum, p) => sum + p.monthlyMaintenanceCost);
+      final saasMaintenanceCost = state.saasProducts.fold(
+        0,
+        (sum, p) => sum + p.monthlyMaintenanceCost,
+      );
       expect(saasMaintenanceCost, 10);
       expect(
         totalCost,
         salaryOnly + saasMaintenanceCost,
-        reason: 'totalMonthlyCost should be salary + SaaS maintenance (no servers/office in this test)',
+        reason:
+            'totalMonthlyCost should be salary + SaaS maintenance (no servers/office in this test)',
       );
     });
 
@@ -546,106 +581,125 @@ void main() {
   // purchaseServer/startResearch が失敗してもAPが消費される
   // =========================================================================
   group('BUG-12: AP consumed even when server purchase or research fails', () {
-    test('purchaseServer should not consume AP when purchase fails due to insufficient funds', () {
-      // Simulate what GameNotifier.purchaseServer does:
-      // 1. Check AP (has enough)
-      // 2. Call InfraEngine.purchaseServer (may fail)
-      // 3. Consume AP (ALWAYS - this is the bug)
-      final expensiveServer = const Server(
-        id: 'expensive_srv',
-        name: '高額サーバー',
-        tier: ServerTier.enterprise,
-        capacity: 50000,
-        monthlyCost: 100, // purchase cost = 100 * 3 = 300万円
-      );
+    test(
+      'purchaseServer should not consume AP when purchase fails due to insufficient funds',
+      () {
+        // Simulate what GameNotifier.purchaseServer does:
+        // 1. Check AP (has enough)
+        // 2. Call InfraEngine.purchaseServer (may fail)
+        // 3. Consume AP (ALWAYS - this is the bug)
+        final expensiveServer = const Server(
+          id: 'expensive_srv',
+          name: '高額サーバー',
+          tier: ServerTier.enterprise,
+          capacity: 50000,
+          monthlyCost: 100, // purchase cost = 100 * 3 = 300万円
+        );
 
-      final state = _createTestState(
-        money: 50, // insufficient for 300万円
-        ap: 3,
-      );
+        final state = _createTestState(
+          money: 50, // insufficient for 300万円
+          ap: 3,
+        );
 
-      // The core engine correctly rejects the purchase
-      final afterPurchase = InfraEngine.purchaseServer(state, expensiveServer);
+        // The core engine correctly rejects the purchase
+        final afterPurchase = InfraEngine.purchaseServer(
+          state,
+          expensiveServer,
+        );
 
-      // Purchase failed - server count unchanged, money unchanged
-      expect(afterPurchase.servers.length, 0);
-      expect(afterPurchase.money, 50);
+        // Purchase failed - server count unchanged, money unchanged
+        expect(afterPurchase.servers.length, 0);
+        expect(afterPurchase.money, 50);
 
-      // BUG in GameNotifier: AP is consumed AFTER calling purchaseServer
-      // even though the purchase failed.
-      // The correct behavior should be: AP NOT consumed when purchase fails.
-      // Test the detection pattern: if server count didn't increase, AP shouldn't decrease.
-      final purchaseSucceeded =
-          afterPurchase.servers.length > state.servers.length;
-      expect(
-        purchaseSucceeded,
-        false,
-        reason: 'Purchase should fail with insufficient funds',
-      );
-      // After fix, GameNotifier should check purchaseSucceeded before consuming AP
-    });
+        // BUG in GameNotifier: AP is consumed AFTER calling purchaseServer
+        // even though the purchase failed.
+        // The correct behavior should be: AP NOT consumed when purchase fails.
+        // Test the detection pattern: if server count didn't increase, AP shouldn't decrease.
+        final purchaseSucceeded =
+            afterPurchase.servers.length > state.servers.length;
+        expect(
+          purchaseSucceeded,
+          false,
+          reason: 'Purchase should fail with insufficient funds',
+        );
+        // After fix, GameNotifier should check purchaseSucceeded before consuming AP
+      },
+    );
 
-    test('startResearch should not consume AP when research fails due to insufficient funds', () {
-      final state = _createTestState(
-        money: 5, // not enough for any research
-        ap: 3,
-        technologies: [
-          const Technology(
-            id: 'tech_test',
-            name: 'テスト技術',
-            category: TechCategory.framework,
-            researchCost: 100,
-            researchTurns: 5,
-            isUnlocked: false,
-          ),
-        ],
-      );
+    test(
+      'startResearch should not consume AP when research fails due to insufficient funds',
+      () {
+        final state = _createTestState(
+          money: 5, // not enough for any research
+          ap: 3,
+          technologies: [
+            const Technology(
+              id: 'tech_test',
+              name: 'テスト技術',
+              category: TechCategory.framework,
+              researchCost: 100,
+              researchTurns: 5,
+              isUnlocked: false,
+            ),
+          ],
+        );
 
-      // The core engine correctly rejects the research start
-      final afterResearch = TechTreeEngine.startResearch(state, 'tech_test');
+        // The core engine correctly rejects the research start
+        final afterResearch = TechTreeEngine.startResearch(state, 'tech_test');
 
-      // Research failed - tech progress unchanged
-      final tech = afterResearch.technologies.firstWhere((t) => t.id == 'tech_test');
-      expect(tech.currentResearchProgress, 0);
-      expect(afterResearch.money, 5); // money unchanged
+        // Research failed - tech progress unchanged
+        final tech = afterResearch.technologies.firstWhere(
+          (t) => t.id == 'tech_test',
+        );
+        expect(tech.currentResearchProgress, 0);
+        expect(afterResearch.money, 5); // money unchanged
 
-      // BUG: GameNotifier.startResearch consumes AP unconditionally after this call
-    });
+        // BUG: GameNotifier.startResearch consumes AP unconditionally after this call
+      },
+    );
 
-    test('startResearch should not consume AP when prerequisites are not met', () {
-      final state = _createTestState(
-        money: 500,
-        ap: 3,
-        technologies: [
-          const Technology(
-            id: 'tech_prereq',
-            name: '前提技術',
-            category: TechCategory.language,
-            researchCost: 20,
-            researchTurns: 3,
-            isUnlocked: false, // not yet unlocked
-          ),
-          const Technology(
-            id: 'tech_advanced',
-            name: '上級技術',
-            category: TechCategory.framework,
-            researchCost: 50,
-            researchTurns: 5,
-            isUnlocked: false,
-            prerequisites: ['tech_prereq'], // requires tech_prereq
-          ),
-        ],
-      );
+    test(
+      'startResearch should not consume AP when prerequisites are not met',
+      () {
+        final state = _createTestState(
+          money: 500,
+          ap: 3,
+          technologies: [
+            const Technology(
+              id: 'tech_prereq',
+              name: '前提技術',
+              category: TechCategory.language,
+              researchCost: 20,
+              researchTurns: 3,
+              isUnlocked: false, // not yet unlocked
+            ),
+            const Technology(
+              id: 'tech_advanced',
+              name: '上級技術',
+              category: TechCategory.framework,
+              researchCost: 50,
+              researchTurns: 5,
+              isUnlocked: false,
+              prerequisites: ['tech_prereq'], // requires tech_prereq
+            ),
+          ],
+        );
 
-      final afterResearch = TechTreeEngine.startResearch(state, 'tech_advanced');
+        final afterResearch = TechTreeEngine.startResearch(
+          state,
+          'tech_advanced',
+        );
 
-      // Research should fail - prerequisite not met
-      final tech = afterResearch.technologies.firstWhere((t) => t.id == 'tech_advanced');
-      expect(tech.currentResearchProgress, 0);
-      expect(afterResearch.money, 500); // money unchanged
+        // Research should fail - prerequisite not met
+        final tech = afterResearch.technologies.firstWhere(
+          (t) => t.id == 'tech_advanced',
+        );
+        expect(tech.currentResearchProgress, 0);
+        expect(afterResearch.money, 500); // money unchanged
 
-      // BUG: GameNotifier.startResearch consumes AP even when this fails
-    });
+        // BUG: GameNotifier.startResearch consumes AP even when this fails
+      },
+    );
 
     test('purchaseServer succeeds and AP should be consumed', () {
       final cheapServer = const Server(
@@ -681,7 +735,8 @@ void main() {
       expect(
         LoanSize.small.monthlyRate,
         lessThanOrEqualTo(0.02),
-        reason: 'Small loan monthly rate ${LoanSize.small.monthlyRate} is too high (${LoanSize.small.monthlyRate * 12 * 100}% annually)',
+        reason:
+            'Small loan monthly rate ${LoanSize.small.monthlyRate} is too high (${LoanSize.small.monthlyRate * 12 * 100}% annually)',
       );
     });
 
@@ -689,7 +744,8 @@ void main() {
       expect(
         LoanSize.medium.monthlyRate,
         lessThanOrEqualTo(0.02),
-        reason: 'Medium loan monthly rate ${LoanSize.medium.monthlyRate} is too high (${LoanSize.medium.monthlyRate * 12 * 100}% annually)',
+        reason:
+            'Medium loan monthly rate ${LoanSize.medium.monthlyRate} is too high (${LoanSize.medium.monthlyRate * 12 * 100}% annually)',
       );
     });
 
@@ -697,7 +753,8 @@ void main() {
       expect(
         LoanSize.large.monthlyRate,
         lessThanOrEqualTo(0.02),
-        reason: 'Large loan monthly rate ${LoanSize.large.monthlyRate} is too high (${LoanSize.large.monthlyRate * 12 * 100}% annually)',
+        reason:
+            'Large loan monthly rate ${LoanSize.large.monthlyRate} is too high (${LoanSize.large.monthlyRate * 12 * 100}% annually)',
       );
     });
 
@@ -707,7 +764,8 @@ void main() {
         expect(
           annualRate,
           lessThan(0.24),
-          reason: '${size.label} annual rate ${(annualRate * 100).toStringAsFixed(1)}% exceeds legal maximum',
+          reason:
+              '${size.label} annual rate ${(annualRate * 100).toStringAsFixed(1)}% exceeds legal maximum',
         );
       }
     });
@@ -729,6 +787,101 @@ void main() {
     });
   });
 
+  group('Regression: staff assignment restrictions', () {
+    test('non-engineer staff cannot be assigned to contract projects', () {
+      final project = ContractProject(
+        id: 'proj_staff_guard',
+        name: 'スタッフ禁止案件',
+        type: ProjectType.webApp,
+        clientName: 'テスト',
+        reward: 300,
+        requiredSkill: 30,
+        totalWork: 50,
+        deadline: 10,
+        status: ProjectStatus.inProgress,
+        startTurn: 1,
+      );
+      final staff = Employee(
+        id: 'staff_1',
+        name: 'バックオフィス太郎',
+        role: EmployeeRole.mid,
+        specialty: EmployeeSpecialty.fullstack,
+        salary: 25,
+        type: EmployeeType.backOffice,
+        skill: 45,
+      );
+      final state = _createTestState(
+        employees: [staff],
+        contractProjects: [project],
+      );
+
+      final result = ContractEngine.assignEmployee(
+        state,
+        'proj_staff_guard',
+        'staff_1',
+      );
+      final updatedProject = result.contractProjects.first;
+      final updatedStaff = result.employees.first;
+
+      expect(updatedProject.assignedEmployeeIds, isEmpty);
+      expect(updatedStaff.assignedProjectId, isNull);
+      expect(result.turnLog.last, contains('エンジニアではないためアサインできません'));
+    });
+  });
+
+  group('Regression: back office AP passive', () {
+    test('hiring second back-office staff grants AP bonus immediately', () {
+      final notifier = GameNotifier();
+
+      final staff1 = Employee(
+        id: 'bo_1',
+        name: 'BO1',
+        role: EmployeeRole.mid,
+        specialty: EmployeeSpecialty.fullstack,
+        salary: 20,
+        type: EmployeeType.backOffice,
+        skill: 40,
+      );
+      final staff2 = Employee(
+        id: 'bo_2',
+        name: 'BO2',
+        role: EmployeeRole.mid,
+        specialty: EmployeeSpecialty.fullstack,
+        salary: 20,
+        type: EmployeeType.backOffice,
+        skill: 40,
+      );
+
+      notifier.hireStaff(staff1);
+      expect(notifier.state.ap, 2);
+
+      notifier.hireStaff(staff2);
+      expect(notifier.state.ap, 2, reason: '2人目のバックオフィス採用で AP+1 が即時反映されること');
+    });
+  });
+
+  group('Regression: server manual repair', () {
+    test('repairServer should recover a down server', () {
+      const downServer = Server(
+        id: 'srv_down_1',
+        name: '障害サーバー',
+        tier: ServerTier.vps,
+        capacity: 500,
+        monthlyCost: 3,
+        currentLoad: 450,
+        isDown: true,
+      );
+      final state = _createTestState(servers: const [downServer]);
+
+      final result = InfraEngine.repairServer(state, 'srv_down_1');
+      final repaired = result.servers.firstWhere((s) => s.id == 'srv_down_1');
+
+      expect(repaired.isDown, false);
+      expect(repaired.currentLoad, 0);
+      expect(result.turnLog.last, contains('手動復旧'));
+    });
+  });
+
   // =========================================================================
   // Additional edge case tests for game state
   // =========================================================================
@@ -744,10 +897,7 @@ void main() {
 
   group('Edge cases: zero money', () {
     test('processMonthlyExpenses with 0 money creates debt', () {
-      final state = _createTestState(
-        money: 0,
-        employees: [_createEmployee()],
-      );
+      final state = _createTestState(money: 0, employees: [_createEmployee()]);
 
       final result = EconomyEngine.processMonthlyExpenses(state);
 
@@ -780,8 +930,9 @@ void main() {
       );
 
       final result = ContractEngine.processProjects(state);
-      final resultProject =
-          result.contractProjects.firstWhere((p) => p.id == 'proj_1');
+      final resultProject = result.contractProjects.firstWhere(
+        (p) => p.id == 'proj_1',
+      );
 
       expect(resultProject.currentWork, 10); // no progress
     });
@@ -790,18 +941,14 @@ void main() {
   group('Edge cases: trust boundary', () {
     test('trust cannot go below 0', () {
       final state = _createTestState(trust: 1);
-      final result = state.copyWith(
-        trust: (state.trust - 10).clamp(0, 100),
-      );
+      final result = state.copyWith(trust: (state.trust - 10).clamp(0, 100));
 
       expect(result.trust, 0);
     });
 
     test('trust cannot go above 100', () {
       final state = _createTestState(trust: 99);
-      final result = state.copyWith(
-        trust: (state.trust + 10).clamp(0, 100),
-      );
+      final result = state.copyWith(trust: (state.trust + 10).clamp(0, 100));
 
       expect(result.trust, 100);
     });
@@ -865,13 +1012,15 @@ void main() {
       final result = ContractEngine.processProjects(state);
 
       // Project should be completed
-      final resultProject =
-          result.contractProjects.firstWhere((p) => p.id == 'proj_1');
+      final resultProject = result.contractProjects.firstWhere(
+        (p) => p.id == 'proj_1',
+      );
       expect(resultProject.status, ProjectStatus.completed);
 
       // Employee should be unassigned
-      final resultEmployee =
-          result.employees.firstWhere((e) => e.id == 'emp_1');
+      final resultEmployee = result.employees.firstWhere(
+        (e) => e.id == 'emp_1',
+      );
       expect(resultEmployee.assignedProjectId, isNull);
     });
   });
@@ -881,9 +1030,7 @@ void main() {
       final state = _createTestState(
         currentTurn: 25,
         trust: 60,
-      ).copyWith(
-        triggeredEventIds: ['evt_big_client'],
-      );
+      ).copyWith(triggeredEventIds: ['evt_big_client']);
 
       final events = EventEngine.getDefaultEvents();
       final bigClientEvent = events.firstWhere((e) => e.id == 'evt_big_client');
@@ -893,7 +1040,7 @@ void main() {
       // Should not trigger because it's already in triggeredEventIds
       final canTrigger =
           !state.triggeredEventIds.contains(bigClientEvent.id) ||
-              !bigClientEvent.isOneTime;
+          !bigClientEvent.isOneTime;
       expect(canTrigger, false);
     });
 
@@ -910,25 +1057,15 @@ void main() {
       );
 
       // Meets conditions
-      final goodMap = {
-        'trust': 60,
-        'hasSaaS': true,
-        'money': 500,
-      };
+      final goodMap = {'trust': 60, 'hasSaaS': true, 'money': 500};
       expect(event.canTrigger(15, goodMap), true);
 
       // Does not meet trust condition
-      final badTrust = {
-        'trust': 30,
-        'hasSaaS': true,
-      };
+      final badTrust = {'trust': 30, 'hasSaaS': true};
       expect(event.canTrigger(15, badTrust), false);
 
       // Does not meet SaaS condition
-      final noSaaS = {
-        'trust': 60,
-        'hasSaaS': false,
-      };
+      final noSaaS = {'trust': 60, 'hasSaaS': false};
       expect(event.canTrigger(15, noSaaS), false);
 
       // Turn too low
@@ -949,10 +1086,7 @@ void main() {
         startTurn: 1,
       );
 
-      final state = _createTestState(
-        money: 500,
-        loans: [loan],
-      );
+      final state = _createTestState(money: 500, loans: [loan]);
 
       final result = FinanceEngine.processLoanPayments(state);
 
@@ -974,10 +1108,7 @@ void main() {
         startTurn: 1,
       );
 
-      final state = _createTestState(
-        money: 500,
-        loans: [loan],
-      );
+      final state = _createTestState(money: 500, loans: [loan]);
 
       final result = FinanceEngine.earlyRepayLoan(state, 'loan_1');
 

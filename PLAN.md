@@ -1,225 +1,269 @@
-# PLAN.md — CTO Simulator バグ修正・改善設計書
+# PLAN.md v3 — CTO Simulator バグ修正・改善設計書
 
 > **作成者:** agent-0-planner (Game Designer)
-> **作成日:** 2026-02-09
-> **ステータス:** implementer向け設計書
+> **更新日:** 2026-02-09 Session 3
+> **ステータス:** implementer向け設計書（v3: コードレビュー反映版）
 
 ---
 
-## 001: BUG-01 — イベントのコスト二重減算を修正
+## 変更履歴
+
+| Version | 内容 |
+|---------|------|
+| v1 | 全9タスク(001-009)の設計書作成 |
+| v2 | 実装レビュー + 追加バグ6件発見 + 新タスク011-015起票 |
+| **v3** | **Session 3 コードレビュー。多数のバグが修正済みであることを確認。残存バグの設計を精密化** |
+
+---
+
+## 修正済みタスク一覧（v3で確認）
+
+以下のタスクは mainブランチのコードで修正が確認された。設計書は参考として残すが、**追加作業は不要**。
+
+| 旧タスク | 修正内容 | 確認箇所 |
+|----------|----------|----------|
+| 001 BUG-01 | イベントコスト二重減算 → effects['money']負値を全7選択肢から削除済み | event_engine.dart L111-327 |
+| 002 BUG-03 | 納期超過無限ループ → overdueGraceTurns=3, _failProject(), abandonProject() 実装済み | contract_engine.dart L114,227-273 |
+| 003 BUG-12 | purchaseServer/startResearch AP修正 → 成功ベースAP消費パターン実装済み | game_notifier.dart L87-94, L137-145 |
+| 005 BUG-10 | qualityBonus未反映 → processProjectsのqualityDelta計算にtechQualityBonus追加済み | contract_engine.dart L171-175 |
+| 006 BUG-13 | SaaS保守費用 → totalSaasMaintenanceCost + totalMonthlyCostに含む | game_state.dart L77-80 |
+| 007 BAL-02 | ローン月利 → 0.008/0.012/0.018に調整済み（設計の0.01/0.015/0.02より良い） | loan.dart L5-7 |
+| 014-C | Office.productivityBonus → processProjectsで使用済み | contract_engine.dart L150 |
+
+---
+
+## 残存タスク一覧（要修正）
+
+| # | タスク | 優先度 | 影響ファイル |
+|---|--------|--------|-------------|
+| 011 | orderOvertime / workOnProject が no-op | P1 | employee_engine.dart, contract_engine.dart, game_notifier.dart |
+| 012-B | launchSaaS が失敗時もAP消費 | P1 | game_notifier.dart |
+| 013-C | SaaSリリースログがハードコード "50人" | P3 | saas_engine.dart |
+| 013-B | 経費ログにSaaS保守費用が未表示 | P3 | economy_engine.dart |
+| 014-A | イベント抽選の順序バイアス | P2 | event_engine.dart |
+| 014-B | 研究の重複チェック不足 | P2 | tech_tree_engine.dart |
+| 015-A | UI改善（サーバー購入disabled, アサインフィルター） | P3 | infra_tab.dart, contract_tab.dart, saas_tab.dart |
+| 015-B | オフィスアップグレード機能 | P3 | office.dart, game_notifier.dart, infra_tab.dart |
+
+---
+
+## 011: orderOvertime / workOnProject が no-op — P1
 
 ### 問題の根本原因
 
-`event_engine.dart:applyEventChoice` メソッドで、イベント選択肢のコスト処理が2箇所で行われている:
+**2つの独立した問題がある:**
 
-1. **L50-54:** `choice.cost > 0` のとき `money -= cost` を実行
-2. **L57-59:** `choice.effects` のループで `effects['money']` が負値の場合にさらに `money += effects['money']` を実行
+#### A. `orderOvertime` — 疲労/幸福度のみ変更、プロジェクト進捗なし
 
-例: `evt_talent_market` の `hire_bonus` 選択肢:
-- `cost: 50` → 50万円減算
-- `effects: {'money': -50}` → さらに50万円減算
-- **結果: -100万円**（本来は-50万円のはず）
+**場所:** `employee_engine.dart:159-183` + `game_notifier.dart:80-84`
 
-同様のパターンが `evt_server_attack`, `evt_tech_conference`, `evt_market_boom`, `evt_employee_burnout`, `evt_board_direction` の選択肢にも存在する。
+**現在の動作:**
+1. `GameNotifier.orderOvertime(employeeId, projectId)` が呼ばれる
+2. `EmployeeEngine.orderOvertime()` が社員の fatigue+20, happiness-10 を適用し、新stateを返す
+3. `GameNotifier` がAPを消費
+
+**問題:** `EmployeeEngine.orderOvertime()` は社員の疲労/幸福度のみ変更し、`projectId` パラメータを使わない。プロジェクトの `currentWork` は一切増加しない。
+
+**結論:** プレイヤーはAPと社員の体力を消費して、何のリターンもない。
+
+#### B. `workOnProject` — APだけ消費して何もしない
+
+**場所:** `contract_engine.dart:317-336`
+
+```dart
+static GameState workOnProject(GameState state, String projectId, {
+  int apCost = 1, bool isOvertime = false,
+}) {
+  if (state.ap < apCost) {
+    return state.copyWith(turnLog: [...state.turnLog, 'APが不足しています。']);
+  }
+  return state.copyWith(ap: state.ap - apCost);  // ← AP消費のみ！
+}
+```
+
+**問題:** AP消費後に `currentWork` を増加させるロジックが完全に欠落している。さらに、このメソッドは `GameNotifier` から呼ばれていない（dead code）。
 
 ### 修正方針
 
-**方針: `effects['money']` を削除し、`cost` フィールドに一本化する**
+**方針: orderOvertime をメインの「手動作業加速」アクションとして実装する**
 
-理由:
-- `cost` フィールドは「選択肢を選ぶのに必要なコスト」という明確なセマンティクス
-- `effects['money']` は正値（報酬）のケースもあるため、正の `money` effect は残す
-- 二重課金を防ぐためには、負の `money` effect を全て削除し、`cost` に統一するのが最もクリーン
+`workOnProject` は現在呼ばれておらず、`orderOvertime` はUIから呼ばれているため、`orderOvertime` を正しく実装し、`workOnProject` は内部ヘルパーとして活用する設計にする。
 
-**変更対象:** `lib/core/event_engine.dart`
+#### Step 1: `ContractEngine.workOnProject` を実装する
 
-**具体的な変更内容:**
+**変更対象:** `lib/core/contract_engine.dart:317-336`
 
-以下のイベント選択肢から `effects` の `'money': -XX` エントリを削除する:
+```dart
+/// 案件の開発を手動で進める
+static GameState workOnProject(
+  GameState state,
+  String projectId,
+  String employeeId, {
+  bool isOvertime = false,
+}) {
+  final project = state.contractProjects.firstWhere(
+    (p) => p.id == projectId,
+    orElse: () => throw StateError('Project not found: $projectId'),
+  );
 
-| イベント | 選択肢ID | 現在の effects['money'] | cost | 修正後 effects |
-|---|---|---|---|---|
-| evt_talent_market | hire_bonus | -50 | 50 | `effects: {}` |
-| evt_server_attack | invest_security | -30 | 30 | `effects: {'trust': 5}` |
-| evt_tech_conference | attend | -20 | 20 | `effects: {'allHappiness': 10}` |
-| evt_market_boom | aggressive | -10 | 10 | `effects: {'trust': 5}` |
-| evt_employee_burnout | team_building | -15 | 15 | `effects: {'allHappiness': 15, 'allFatigue': -20}` |
-| evt_employee_burnout | bonus | -30 | 30 | `effects: {'allHappiness': 20}` |
-| evt_board_direction | accept_change | -50 | 50 | `effects: {'trust': 3}` |
+  if (project.status != ProjectStatus.inProgress &&
+      project.status != ProjectStatus.overdue) {
+    return state;
+  }
 
-**注意:** 以下の選択肢は `effects['money']` が正値（報酬）なので変更しない:
-- `evt_big_client` の `accept_big`: `effects: {'trust': 10, 'money': 100}` — これは報酬なので正しい
-- `evt_investor_referral` の `accept_referral`: `effects: {'money': 80, 'trust': 5}` — 正しい
+  final employee = state.employees.firstWhere(
+    (e) => e.id == employeeId,
+    orElse: () => throw StateError('Employee not found: $employeeId'),
+  );
+
+  // テクノロジーボーナス
+  final techBonus = state.technologies
+      .where((t) => t.isUnlocked)
+      .fold(0, (sum, t) => sum + t.productivityBonus);
+  final officeBonus = state.office?.productivityBonus ?? 0;
+  final bonusMultiplier = 1.0 + (techBonus + officeBonus) / 100.0;
+
+  // 個人の生産性に基づく作業量
+  // processProjects は全員の合計/10 だが、手動は1人の即時作業なので /5 で高めに
+  final baseWork = employee.productivity * bonusMultiplier;
+  final overtimeMultiplier = isOvertime ? 1.5 : 1.0;
+  final workDone = (baseWork * overtimeMultiplier / 5).round().clamp(1, 999);
+
+  // プロジェクト進捗を更新
+  final updatedProjects = state.contractProjects.map((p) {
+    if (p.id == projectId) {
+      return p.copyWith(
+        currentWork: (p.currentWork + workDone).clamp(0, p.totalWork),
+      );
+    }
+    return p;
+  }).toList();
+
+  final updated = updatedProjects.firstWhere((p) => p.id == projectId);
+  final logSuffix = isOvertime ? '（残業）' : '';
+
+  return state.copyWith(
+    contractProjects: updatedProjects,
+    turnLog: [
+      ...state.turnLog,
+      '${employee.name}が「${project.name}」を作業$logSuffix: +$workDone工数 (${(updated.progress * 100).toStringAsFixed(0)}%)',
+    ],
+  );
+}
+```
+
+**設計根拠:**
+- `processProjects`（ターン終了時自動）: 全社員の合計生産性 × bonus / 10
+- `workOnProject`（手動）: 1人の生産性 × bonus / 5（手動はターン内即時なのでやや効率高め）
+- 残業時は 1.5倍の作業量
+- 最低1工数を保証（`clamp(1, 999)`）
+
+#### Step 2: `EmployeeEngine.orderOvertime` を拡張する
+
+**変更対象:** `lib/core/employee_engine.dart:158-183`
+
+```dart
+/// 残業指示（社員状態の変更 + プロジェクト作業進捗）
+static GameState orderOvertime(
+  GameState state,
+  String employeeId,
+  String projectId,
+) {
+  final empIndex = state.employees.indexWhere((e) => e.id == employeeId);
+  if (empIndex < 0) return state;
+
+  final employee = state.employees[empIndex];
+
+  // 1. プロジェクト進捗を追加（ContractEngine経由）
+  var updatedState = ContractEngine.workOnProject(
+    state, projectId, employeeId, isOvertime: true,
+  );
+
+  // 2. 社員の疲労増加・幸福度低下
+  final updatedEmployee = employee.copyWith(
+    fatigue: (employee.fatigue + 20).clamp(0, 100),
+    happiness: (employee.happiness - 10).clamp(0, 100),
+  );
+
+  final employees = List<Employee>.from(updatedState.employees);
+  // empIndex は state.employees から取得したので、updatedState でも同じインデックス
+  // ただし workOnProject が employees を変更しないため安全
+  final newEmpIndex = employees.indexWhere((e) => e.id == employeeId);
+  employees[newEmpIndex] = updatedEmployee;
+
+  return updatedState.copyWith(
+    employees: employees,
+  );
+  // ログは workOnProject 内で出力済み + 疲労情報はログに含めない（UIで確認可能）
+}
+```
+
+**注意:** `workOnProject` のログとは別に疲労情報を表示したい場合は、追加のturnLog行を入れてもよい。
+
+#### Step 3: GameNotifier.orderOvertime はそのまま
+
+現在の実装:
+```dart
+void orderOvertime(String employeeId, String projectId) {
+  if (!_canAfford(ActionCategory.management)) return;
+  state = EmployeeEngine.orderOvertime(state, employeeId, projectId);
+  state = state.copyWith(ap: state.ap - _apCost(ActionCategory.management));
+}
+```
+
+**これはそのまま正しく動作する。** `EmployeeEngine.orderOvertime` が正しいstateを返すようになれば、AP消費行がそのstateを上書きしても、copyWithは指定したフィールド(ap)のみ変更し、他のフィールド(employees, contractProjects, turnLog)は前行のstateを維持する。
 
 ### 期待される結果
 
-- イベント選択時のコスト減算が1回のみになる
-- 例: `hire_bonus` で所持金が -50万円（現在の -100万円ではなく）
+- `orderOvertime`: AP消費 + 社員疲労+20/幸福度-10 + プロジェクト進捗（通常の1.5倍）
+- 残業によるプロジェクト加速と社員のコンディション悪化のトレードオフが機能する
+- ログに作業量が表示される
 
 ### テスト方法
 
 ```dart
-test('イベント選択肢のコストが二重減算されない', () {
-  final state = GameState.initial(const GameConfig()).copyWith(money: 500);
-  final event = GameEvent(/* evt_talent_market */);
-  final choice = event.choices[0]; // hire_bonus: cost=50
-  final result = EventEngine.applyEventChoice(state, event, choice);
-  expect(result.money, 450); // 500 - 50 = 450 (not 400)
+test('orderOvertime がプロジェクト進捗を増加させる', () {
+  // 1. employee(productivity: 50) を project(totalWork: 100) にアサイン
+  // 2. orderOvertime(employeeId, projectId) を実行
+  // 3. project.currentWork > 0 であること
+  // 4. employee.fatigue が +20 されていること
+  // 5. employee.happiness が -10 されていること
+});
+
+test('workOnProject が進捗を増加させる', () {
+  // 1. project(currentWork: 0, totalWork: 100)
+  // 2. ContractEngine.workOnProject(state, projectId, employeeId) を実行
+  // 3. currentWork > 0 であること
 });
 ```
 
 ---
 
-## 002: BUG-03 — 納期超過ペナルティの無限ループを修正
+## 012-B: launchSaaS が失敗時もAP消費 — P1
 
 ### 問題の根本原因
 
-`contract_engine.dart:processProjects` (L196-207) で:
+**場所:** `game_notifier.dart:130-134`
 
-1. `status == ProjectStatus.overdue` の案件に**毎ターン** `trust -= 2` を適用
-2. overdue案件を終了させる手段（自動失敗、手動破棄）が存在しない
-3. overdue案件のアサイン社員はそのまま拘束され続ける
-4. trust が 0 になるまで減り続け、確実にゲームオーバーになる
+```dart
+void launchSaaS(String productId) {
+  if (!_canAfford(ActionCategory.tech)) return;
+  state = SaaSEngine.launchProduct(state, productId);
+  state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
+}
+```
+
+`SaaSEngine.launchProduct` は以下のケースで失敗する:
+- `state.totalServerCapacity <= 0`（サーバーがない）
+- 該当製品の `isDevelopmentComplete` が false（開発未完了）
+
+失敗時はログだけ出してstateを返すが、`launchSaaS` はその後無条件にAPを消費する。
+
+**対比:** `purchaseServer`（L87-94）と `startResearch`（L137-145）は成功ベースAP消費が実装済み。
 
 ### 修正方針
 
-**2段階の修正を行う:**
-
-#### A. overdue案件の自動失敗（3ターン超過で強制失敗）
-
-**変更対象:** `lib/core/contract_engine.dart:processProjects`
-
-**変更内容:**
-
-L172-178 の納期超過判定部分を拡張し、以下のロジックを追加:
-
-```
-// 現在のロジック: status を overdue にセットするだけ
-// 追加するロジック:
-// 1. overdue になってからのターン数を追跡する
-//    → ContractProject モデルに `overdueSinceTurn: int?` フィールドを追加
-// 2. overdue開始時に overdueSinceTurn を現在ターンにセット
-// 3. overdueSinceTurn から3ターン経過で ProjectStatus.failed にセット
-// 4. failed 時: 着手金の返還不要だが、信頼度 -5 のペナルティ
-// 5. failed 案件のアサイン社員を自動解放
-```
-
-**ContractProject モデル変更:** `lib/core/models/contract_project.dart`
-
-```dart
-// 追加フィールド
-final int? overdueSinceTurn;  // nullable（通常のcopyWithで渡せる）
-```
-
-**processProjects の変更ロジック:**
-
-```
-for each overdue project:
-  if overdueSinceTurn == null:
-    set overdueSinceTurn = currentTurn
-  if currentTurn - overdueSinceTurn >= 3:
-    set status = ProjectStatus.failed
-    trust -= 5
-    log: '案件「{name}」が失敗しました（納期超過3ターン）'
-    unassign all employees
-  else:
-    trust -= 2  // 従来通りの毎ターンペナルティ
-    log: '納期超過ペナルティ: 信頼度 -2 (あと{残りターン}ターンで失敗)'
-```
-
-**ProjectStatus に `failed` を追加:**
-
-```dart
-enum ProjectStatus { available, inProgress, completed, overdue, failed }
-```
-
-#### B. プレイヤーによる案件破棄機能（オプション）
-
-**変更対象:** `lib/core/contract_engine.dart`, `lib/state/game_notifier.dart`, `lib/ui/screens/contract_tab.dart`
-
-```dart
-// ContractEngine に追加
-static GameState abandonProject(GameState state, String projectId) {
-  // 1. 案件を failed に変更
-  // 2. 着手金分の信頼度ペナルティ（trust -5）
-  // 3. アサイン社員を解放
-  // 4. ログ出力
-}
-
-// GameNotifier に追加
-void abandonProject(String projectId) {
-  state = ContractEngine.abandonProject(state, projectId);
-}
-```
-
-UIでは overdue / inProgress の案件に「破棄」ボタンを追加。
-
-### 期待される結果
-
-- overdue案件が3ターン後に自動失敗し、社員が解放される
-- プレイヤーが自主的に案件を破棄できる
-- trust=0 の無限降下が防止される
-
-### テスト方法
-
-```dart
-test('overdue案件は3ターン後に自動失敗する', () {
-  // overdue状態のプロジェクト(overdueSinceTurn=10)をセット
-  // currentTurn=13でprocessProjects実行
-  // → status == ProjectStatus.failed になること
-  // → アサイン社員が解放されること
-});
-```
-
----
-
-## 003: BUG-12 — サーバー購入・研究開始時のAP無条件消費を修正
-
-### 問題の根本原因
-
-`game_notifier.dart` の以下メソッドで、アクションが失敗してもAPが消費される:
-
-1. **`purchaseServer` (L87-90):** `InfraEngine.purchaseServer` が資金不足でログだけ出して失敗しても、次行で `ap -= cost` が実行される
-2. **`startResearch` (L133-137):** `TechTreeEngine.startResearch` が前提技術未解禁や資金不足で失敗しても、AP消費される
-
-対比: `hireEmployee` (L64-71) は正しく「採用成功した場合のみAP消費」パターンを実装済み。
-
-### 修正方針
-
-**変更対象:** `lib/state/game_notifier.dart`
-
-#### purchaseServer の修正 (L87-90)
-
-```dart
-void purchaseServer(Server server) {
-  if (!_canAfford(ActionCategory.tech)) return;
-  final prevServerCount = state.servers.length;
-  state = InfraEngine.purchaseServer(state, server);
-  // 購入が成功した場合のみAPを消費
-  if (state.servers.length > prevServerCount) {
-    state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
-  }
-}
-```
-
-#### startResearch の修正 (L133-137)
-
-```dart
-void startResearch(String techId) {
-  if (!_canAfford(ActionCategory.tech)) return;
-  final prevMoney = state.money;
-  state = TechTreeEngine.startResearch(state, techId);
-  // 研究が開始された場合のみAPを消費（資金が減っていれば成功）
-  if (state.money < prevMoney) {
-    state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
-  }
-}
-```
-
-#### 同様のパターンで要確認の他メソッド
-
-- `startSaaSDevelopment` (L99-123): 内部で資金チェックして早期returnしているが、AP消費は成功時のみ処理される（L117で一括処理）。ただし、`SaaSEngine` がすでに状態にある製品の重複チェックをしていない点は別課題。→ 現状はOK
-- `launchSaaS` (L126-130): `SaaSEngine.launchProduct` が失敗（サーバーなし）してもAP消費される → **これも修正が必要**
+**変更対象:** `lib/state/game_notifier.dart:130-134`
 
 ```dart
 void launchSaaS(String productId) {
@@ -234,429 +278,572 @@ void launchSaaS(String productId) {
 }
 ```
 
+**設計根拠:**
+- `isLaunched` が false → true に変わっていれば成功
+- `purchaseServer` の `servers.length` チェックと同じパターン
+
 ### 期待される結果
 
-- 資金不足でサーバー購入失敗 → AP消費なし
-- 前提未解禁で研究失敗 → AP消費なし
-- サーバーなしでSaaSリリース失敗 → AP消費なし
+- サーバーなしでSaaSリリース試行 → AP消費なし
+- 開発未完了でリリース試行 → AP消費なし
+- 正常リリース → AP消費あり
 
 ### テスト方法
 
 ```dart
-test('サーバー購入失敗時にAPが消費されない', () {
-  // money=0, ap=3 の状態でサーバー購入
-  // → ap == 3 のまま
-});
-
-test('研究開始失敗時にAPが消費されない', () {
-  // 前提技術が未解禁の状態で研究開始
-  // → ap が変わらない
+test('launchSaaS 失敗時にAPが消費されない', () {
+  // サーバーなし、SaaS開発完了済みの状態
+  // launchSaaS 実行 → AP変化なし
 });
 ```
 
 ---
 
-## 004: BUG-04 — SaaSリリース時のユーザー数ログ不一致を修正
+## 013-C: SaaSリリースログのハードコード — P3
 
 ### 問題の根本原因
 
-`saas_engine.dart:launchProduct` (L108-139):
+**場所:** `saas_engine.dart:136`
 
-- L123: `totalUsers: 50` — 実際のユーザー数を50に設定
-- L136: ログで `'初期ユーザー: 100人'` と表示 — ハードコードされた文字列
+```dart
+'${product.name}をリリースしました！ 初期ユーザー: 50人 (信頼度+5)',
+```
 
-50人と100人の不整合。
+実際の初期ユーザー数は L123 の `totalUsers: 50` だが、ログ文字列が数値をハードコードしている。将来初期ユーザー数を変更した場合にログとの不整合が発生する。
 
 ### 修正方針
 
-**変更対象:** `lib/core/saas_engine.dart:launchProduct` L136
-
-**変更内容:** ログの文字列を実際の値に合わせる
+**変更対象:** `lib/core/saas_engine.dart:136`
 
 ```dart
 // 修正前:
-'${product.name}をリリースしました！ 初期ユーザー: 100人 (信頼度+5)',
+'${product.name}をリリースしました！ 初期ユーザー: 50人 (信頼度+5)',
 
 // 修正後:
 '${product.name}をリリースしました！ 初期ユーザー: ${product.totalUsers}人 (信頼度+5)',
 ```
 
-初期ユーザー数は50人が適切（SaaSの初期リリースとしてリアリスティック）。ログを50に合わせる。
-
-### 期待される結果
-
-- リリースログに「初期ユーザー: 50人」と正しく表示される
+**注意:** `product` は L129 の `updatedProducts.firstWhere` で取得した更新後のオブジェクト。`totalUsers` は50にセット済みなので正しい値が表示される。
 
 ### テスト方法
 
 ```dart
-test('SaaSリリース時のログに正しいユーザー数が表示される', () {
-  // 開発完了済みSaaS製品をリリース
-  // → turnLog に '初期ユーザー: 50人' が含まれること
+test('リリースログに実際のユーザー数が表示される', () {
+  // 開発完了済みSaaS + サーバーあり
+  // launchProduct 実行
+  // turnLog に '初期ユーザー: 50人' が含まれる（テンプレートリテラルから生成）
 });
 ```
 
 ---
 
-## 005: BUG-10 — qualityBonusをプロジェクト品質計算に反映
+## 013-B: 経費ログにSaaS保守費用が未表示 — P3
 
 ### 問題の根本原因
 
-`contract_engine.dart:processProjects` (L148-158):
+**場所:** `economy_engine.dart:18`
 
-品質スコアの計算式:
 ```dart
-final qualityDelta = ((avgSkill - 50) / 10 - avgFatigue / 20).round();
+log.add('月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost})');
 ```
 
-`Technology.qualityBonus` が計算に含まれていない。テクノロジー研究で品質ボーナスを得ても、受託案件の品質に影響しない。
+`totalMonthlyCost` の計算自体は SaaS保守費用を含むようになった（game_state.dart L80）が、ログの内訳表示にSaaS保守が含まれていない。
 
-一方、`productivityBonus` は L128-140 で正しく適用されている（`bonusMultiplier`）。
+プレイヤーは経費の内訳が合わない（表示の合計 < 実際の引き落とし）ことに混乱する可能性がある。
 
 ### 修正方針
 
-**変更対象:** `lib/core/contract_engine.dart:processProjects` L148-159 付近
-
-**変更内容:**
+**変更対象:** `lib/core/economy_engine.dart:18`
 
 ```dart
-// テクノロジー品質ボーナスの計算（productivityBonusと同様のパターン）
-final techQualityBonus = state.technologies
-    .where((t) => t.isUnlocked)
-    .fold(0, (sum, t) => sum + t.qualityBonus);
+// 修正前:
+log.add('月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost})');
 
-// 品質スコアの計算（スキル・疲労・テクノロジーに基づく）
-final qualityDelta =
-    ((avgSkill - 50) / 10 - avgFatigue / 20 + techQualityBonus / 10).round();
+// 修正後:
+final saasMaintenanceStr = state.totalSaasMaintenanceCost > 0
+    ? ', SaaS保守: ${state.totalSaasMaintenanceCost}'
+    : '';
+log.add('月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost}$saasMaintenanceStr)');
 ```
 
-**設計根拠:**
-- `productivityBonus` は `bonusMultiplier = 1.0 + bonus/100.0` として倍率に変換
-- `qualityBonus` も同様にパーセント値 → 品質スコアへの加算に変換
-- `qualityBonus / 10` は 10%ボーナスあたり +1 品質デルタ（バランス重視）
-- 例: Git(5%) + Docker(8%) + React(10%) = 23% → +2.3 → +2/ターン
-
-### 期待される結果
-
-- テクノロジー研究の品質ボーナスが受託案件の品質スコアに反映される
-- 高い品質ボーナスを持つ技術を研究するインセンティブが生まれる
+**設計根拠:** SaaS保守費用がゼロの場合（SaaS未リリース時）は表示を省略して、ログの見やすさを維持。
 
 ### テスト方法
 
 ```dart
-test('テクノロジーの品質ボーナスが案件品質に反映される', () {
-  // qualityBonus合計20%のテクノロジーが解禁された状態
-  // 案件にエンジニアをアサインしてターン処理
-  // → qualityScore の増加量がボーナスなしの場合より大きいこと
+test('SaaS保守費用が経費ログに表示される', () {
+  // isLaunched=true のSaaS製品がある状態
+  // processMonthlyExpenses 実行
+  // turnLog に 'SaaS保守:' が含まれること
 });
 ```
 
 ---
 
-## 006: BUG-13 — SaaS保守費用を月次経費に含める
+## 014-A: イベント抽選の順序バイアス — P2
 
 ### 問題の根本原因
 
-`game_state.dart:totalMonthlyCost` (L77):
+**場所:** `event_engine.dart:21-31`
 
 ```dart
-int get totalMonthlyCost => totalSalary + totalServerCost + officeCost;
-```
-
-`SaaSProduct.monthlyMaintenanceCost` が計算に含まれていない。
-
-- 各SaaS製品には `monthlyMaintenanceCost` フィールドがある（5〜30万円）
-- しかし `totalMonthlyCost` に加算されていない
-- 経費表示UIで保守費用が見えず、プレイヤーが実際のコスト構造を把握できない
-
-### 修正方針
-
-**変更対象:** `lib/core/game_state.dart`
-
-**変更内容:**
-
-```dart
-// 追加: SaaS保守費用の合計プロパティ
-int get totalSaaSMaintenanceCost =>
-    saasProducts.where((p) => p.isLaunched).fold(0, (sum, p) => sum + p.monthlyMaintenanceCost);
-
-// 修正: totalMonthlyCost に保守費用を含める
-int get totalMonthlyCost =>
-    totalSalary + totalServerCost + officeCost + totalSaaSMaintenanceCost;
-```
-
-**注意:** `isLaunched` なSaaS製品のみ保守費用を計上。開発中は保守不要。
-
-### 期待される結果
-
-- SaaS製品リリース後、月次経費にメンテナンスコストが反映される
-- UIの経費表示が実態と一致する
-
-### 補足: 経費ログの更新
-
-`economy_engine.dart:processMonthlyExpenses` L18 のログ行:
-```dart
-'月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost})'
-```
-
-SaaS保守費用を含めるため、以下に更新:
-```dart
-'月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost}, SaaS保守: ${state.totalSaaSMaintenanceCost})'
-```
-
-### テスト方法
-
-```dart
-test('SaaS保守費用がtotalMonthlyCostに含まれる', () {
-  final state = GameState.initial(const GameConfig()).copyWith(
-    saasProducts: [
-      SaaSProduct(/* isLaunched: true, monthlyMaintenanceCost: 10 */),
-    ],
-  );
-  expect(state.totalMonthlyCost, /* 基本コスト + 10 */);
-});
-```
-
----
-
-## 007: BAL-02 — ローン月利を現実的な水準に調整
-
-### 問題の根本原因
-
-`models/loan.dart:LoanSize` (L4-7):
-
-```dart
-small('小口融資', 100, 0.05, 12),   // 月利5% = 年利60%
-medium('中口融資', 300, 0.07, 24),   // 月利7% = 年利84%
-large('大口融資', 500, 0.10, 36);    // 月利10% = 年利120%
-```
-
-現実のビジネスローンと比較:
-- 銀行融資: 年利1-5% → 月利0.08-0.42%
-- ノンバンク: 年利5-15% → 月利0.42-1.25%
-- カードローン: 年利15-18% → 月利1.25-1.5%
-
-現在の設定は闇金レベルであり、ゲームバランスとしてもローンが全く使い物にならない。
-
-### 修正方針
-
-**変更対象:** `lib/core/models/loan.dart:LoanSize`
-
-**ゲームバランスを考慮した新しい利率設計:**
-
-ゲームは1ターン=1ヶ月相当。リアリスティックすぎると利息が微小で意味がないため、ゲーム性を加味して以下に設定:
-
-```dart
-small('小口融資', 100, 0.01, 12),   // 月利1% = 年利12% — 低リスク短期
-medium('中口融資', 300, 0.015, 24),  // 月利1.5% = 年利18% — 中リスク中期
-large('大口融資', 500, 0.02, 36);    // 月利2% = 年利24% — 高リスク長期
-```
-
-**設計根拠:**
-- 月利1-2% は「ゲーム世界のビジネスローン」として十分リアリスティック
-- 小口100万を12ターンで返済 → 月額返済: 元本8.3万 + 利息1万 ≈ 9.3万円/月（現実的）
-- 大口500万を36ターンで返済 → 月額返済: 元本13.9万 + 利息10万 ≈ 23.9万円/月（重いが払える）
-- 現在の設定: 大口月額返済 = 13.9万 + 50万 = 63.9万円/月（ほぼ破産確定）
-
-**月額返済額の比較（大口融資・初月）:**
-
-| 月利 | 月額利息 | 月額元本 | 月額合計 |
-|---|---|---|---|
-| 現在(10%) | 50万 | 13.9万 | 63.9万 |
-| 修正後(2%) | 10万 | 13.9万 | 23.9万 |
-
-### 期待される結果
-
-- ローンが実用的な資金調達手段になる
-- 利息負担が現実的で、返済計画が立てられる
-
-### テスト方法
-
-```dart
-test('ローン月利が適切な水準', () {
-  expect(LoanSize.small.monthlyRate, 0.01);
-  expect(LoanSize.medium.monthlyRate, 0.015);
-  expect(LoanSize.large.monthlyRate, 0.02);
-});
-
-test('ローン月額返済額が妥当', () {
-  final loan = Loan.create(LoanSize.large, 1);
-  // 初月: 元本500/36≈14 + 利息500*0.02=10 ≈ 24万円
-  expect(loan.monthlyPayment, lessThan(30));
-});
-```
-
----
-
-## 008: UI改善 — サーバー購入時の資金チェック + アサインのエンジニアフィルター
-
-### 問題の根本原因
-
-#### A. サーバー購入の資金チェック不足
-
-`infra_tab.dart`: サーバー購入ボタンが資金不足でも押せてしまい、エラーログが表示されるだけ。UXが悪い。
-
-#### B. アサインダイアログのフィルタリング不足
-
-`contract_tab.dart`, `saas_tab.dart`: エンジニアのアサインダイアログで全社員（マーケター、バックオフィスなど非エンジニア含む）が表示される。
-
-### 修正方針
-
-#### A. サーバー購入ボタンの資金チェック
-
-**変更対象:** `lib/ui/screens/infra_tab.dart`
-
-```dart
-// 各サーバー購入ボタンで:
-// purchaseCost = server.monthlyCost * 3
-// state.money < purchaseCost の場合:
-//   - ボタンをdisabledにする
-//   - ツールチップで「資金不足: {purchaseCost}万円必要」と表示
-```
-
-#### B. アサインダイアログでエンジニアのみ表示
-
-**変更対象:** `lib/ui/screens/contract_tab.dart`, `lib/ui/screens/saas_tab.dart`
-
-```dart
-// アサインダイアログの社員リストフィルタ:
-// unassignedEmployees.where((e) => e.type == EmployeeType.engineer)
-```
-
-エンジニア以外（marketer, backOffice）はコード開発に参加できないため、アサイン候補から除外。
-
-### 期待される結果
-
-- 資金不足時にサーバー購入ボタンがグレーアウト
-- アサインダイアログにエンジニアのみ表示
-
-### テスト方法
-
-- UIテスト: 資金不足状態でサーバー購入ボタンが disabled であること
-- UIテスト: アサインダイアログに EmployeeType.engineer のみ表示されること
-
----
-
-## 009: FUN — オフィスアップグレード機能の実装
-
-### 問題の根本原因
-
-現在のゲームでは `Office` モデルが存在するが、初期の「ガレージオフィス」のみでアップグレード手段がない。`Office` クラスには `maxEmployees`, `monthlyCost`, `happinessBonus`, `productivityBonus` が定義済みだが使われていない。
-
-### 修正方針
-
-#### オフィスグレード定義
-
-| ID | 名前 | 社員上限 | 月額 | 幸福度Bonus | 生産性Bonus | 必要資金 | 説明 |
-|---|---|---|---|---|---|---|---|
-| office_garage | ガレージオフィス | 5 | 5万 | 0 | 0 | - | 初期オフィス |
-| office_coworking | コワーキングスペース | 8 | 15万 | 5 | 5 | 50万 | 他社との交流あり |
-| office_small | 小規模オフィス | 15 | 30万 | 10 | 8 | 150万 | 自社専用空間 |
-| office_medium | 中規模オフィス | 30 | 60万 | 15 | 12 | 400万 | フロア単位 |
-| office_large | 大規模オフィス | 50 | 100万 | 20 | 15 | 800万 | ビル1棟 |
-
-#### 必要な変更
-
-**1. オフィスマスターデータ定義**
-
-`lib/core/models/office.dart` に静的メソッドまたは定数を追加:
-
-```dart
-static const List<Office> allOffices = [
-  Office(id: 'office_garage', name: 'ガレージオフィス', maxEmployees: 5, monthlyCost: 5, description: 'スタートアップの原点'),
-  Office(id: 'office_coworking', name: 'コワーキングスペース', maxEmployees: 8, monthlyCost: 15, happinessBonus: 5, productivityBonus: 5, description: '他社との交流あり'),
-  // ... 他のオフィス
-];
-
-static int upgradeCost(String officeId) {
-  // マップで管理
+for (final event in eligibleEvents) {
+  final roll = _random.nextDouble();
+  final adjustedProb = event.probability * state.config.difficulty.eventSeverity;
+  if (roll < adjustedProb) {
+    return event;
+  }
 }
 ```
 
-`Office` にアップグレード費用フィールドは不要。別途管理する。
+リスト先頭のイベントから順に独立した確率チェックを行い、最初にパスしたものを返す。
 
-**2. アップグレードロジック**
+**問題:** リスト先頭のイベントが統計的に選ばれやすい。
 
-`lib/state/game_notifier.dart` に追加:
+**具体例:** eventSeverity=1.0、2つのイベント A(prob=0.3), B(prob=0.3) の場合:
+- P(A選択) = 0.3 = 30%
+- P(B選択) = P(A不選択) × P(B選択) = 0.7 × 0.3 = 21%
+- P(どちらも選択されない) = 0.7 × 0.7 = 49%
+
+Aは Bより 43% 高い確率で選ばれる（30% vs 21%）。
+
+### 修正方針
+
+**方針: 重み付きルーレット選択（Weighted Roulette Selection）に変更**
+
+**変更対象:** `lib/core/event_engine.dart:rollEvent`
+
+```dart
+static GameEvent? rollEvent(GameState state, List<GameEvent> allEvents) {
+  final eligibleEvents = allEvents.where((event) {
+    if (state.triggeredEventIds.contains(event.id) && event.isOneTime) {
+      return false;
+    }
+    return event.canTrigger(state.currentTurn, state.toConditionMap());
+  }).toList();
+
+  if (eligibleEvents.isEmpty) return null;
+
+  // Step 1: 各イベントの調整済み確率を計算
+  final adjustedProbs = eligibleEvents.map((e) =>
+    e.probability * state.config.difficulty.eventSeverity
+  ).toList();
+
+  // Step 2: 「イベントが1つも発生しない」確率を計算
+  // 全イベントの発生確率の最大値を「このターンでイベントが起きる確率」として使う
+  final maxProb = adjustedProbs.reduce((a, b) => a > b ? a : b);
+
+  // Step 3: まず「今回イベントが発生するか」を判定
+  final occurRoll = _random.nextDouble();
+  if (occurRoll >= maxProb) {
+    return null;  // イベントなし
+  }
+
+  // Step 4: イベントが発生する場合、重みに基づいて公平に1つ選択
+  final totalWeight = adjustedProbs.fold(0.0, (sum, p) => sum + p);
+  final selectRoll = _random.nextDouble() * totalWeight;
+
+  var cumulative = 0.0;
+  for (var i = 0; i < eligibleEvents.length; i++) {
+    cumulative += adjustedProbs[i];
+    if (selectRoll < cumulative) {
+      return eligibleEvents[i];
+    }
+  }
+
+  return eligibleEvents.last;  // 浮動小数点の丸め対策
+}
+```
+
+**設計根拠:**
+- Step 3: 元のコードでは「全体的にイベントが起きやすさ」が確率の合計値ではなく個別の確率で制御されていた。`maxProb` を使うことで、「最も起きやすいイベント」の確率でイベント発生を判定する（ゲームの難易度感を維持）
+- Step 4: イベントが発生する場合、確率の比率で公平に選択。prob=0.3のイベントは prob=0.15のイベントの2倍選ばれやすい
+- 結果: リスト順序による統計的バイアスが解消される
+
+**注意:** 「イベント発生頻度」が元のロジックと大きく変わらないよう、maxProbを使ってイベント発生判定を行う。sumProbを使うとイベントが起きすぎる可能性がある。
+
+### 代替案（よりシンプルだが発生頻度が変わる）
+
+元のロジックとの互換性を最重視する場合:
+
+```dart
+// 元のロジックと同じ「合計発生確率」を維持しつつ、順序バイアスを除去
+// P(少なくとも1つ発生) = 1 - Π(1 - p_i)
+final noEventProb = adjustedProbs.fold(1.0, (prod, p) => prod * (1 - p));
+final eventProb = 1 - noEventProb;
+
+if (_random.nextDouble() >= eventProb) return null;
+
+// 発生する場合、確率比で選択
+// ... (Step 4 と同じ)
+```
+
+**推奨は最初の案**（maxProb方式）。理由: 元のロジックでもリスト1番目しかほぼ評価されないため、体感的なイベント発生頻度は maxProb に近い。
+
+### テスト方法
+
+```dart
+test('イベント抽選がリスト順序に依存しない', () {
+  // 同一確率の2イベントを用意
+  // 1000回抽選して各イベントの選択回数を記録
+  // 選択回数の差が10%以内（統計的に公平）
+  // 注: _random をテスト用に固定seedで注入する必要あり → 015-Random注入と併せて対応
+});
+```
+
+---
+
+## 014-B: 研究の重複チェック不足 — P2
+
+### 問題の根本原因
+
+**場所:** `tech_tree_engine.dart:7-43`
+
+`startResearch` メソッドは以下のチェックを行う:
+1. `canResearch(state.unlockedTechIds)` — 前提技術が解禁済みか
+2. `state.money < tech.researchCost` — 資金が足りるか
+
+**不足しているチェック:**
+- 既に `isUnlocked == true`（研究完了済み）の技術を再度研究開始できてしまう
+- 既に `isResearching == true`（研究中）の技術を再度研究開始できてしまう
+
+いずれの場合も `currentResearchProgress` が1にリセットされ、研究費用が二重に請求される。
+
+### 修正方針
+
+**変更対象:** `lib/core/tech_tree_engine.dart:startResearch` L7-43
+
+`canResearch` チェックの前に追加:
+
+```dart
+static GameState startResearch(GameState state, String techId) {
+  final tech = state.technologies.firstWhere((t) => t.id == techId);
+
+  // 既に解禁済み
+  if (tech.isUnlocked) {
+    return state.copyWith(
+      turnLog: [
+        ...state.turnLog,
+        '${tech.name}は既に研究完了しています。',
+      ],
+    );
+  }
+
+  // 既に研究中
+  if (tech.isResearching) {
+    return state.copyWith(
+      turnLog: [
+        ...state.turnLog,
+        '${tech.name}は既に研究中です。',
+      ],
+    );
+  }
+
+  // 前提技術チェック（既存）
+  if (!tech.canResearch(state.unlockedTechIds)) {
+    return state.copyWith(
+      turnLog: [
+        ...state.turnLog,
+        '前提技術が未解禁のため、研究を開始できません。',
+      ],
+    );
+  }
+
+  // 資金チェック（既存）
+  if (state.money < tech.researchCost) {
+    // ... 既存のまま
+  }
+
+  // ... 残りは既存のまま
+}
+```
+
+**game_notifier.dart側の注意:**
+
+`startResearch` メソッド（L137-145）は「資金が減ったらAP消費」パターンを使っている:
+
+```dart
+final prevMoney = state.money;
+state = TechTreeEngine.startResearch(state, techId);
+if (state.money < prevMoney) {
+  state = state.copyWith(ap: state.ap - _apCost(ActionCategory.tech));
+}
+```
+
+重複チェックで弾かれた場合は `money` が変わらないため、AP消費されない。**game_notifier側の変更は不要。**
+
+### テスト方法
+
+```dart
+test('解禁済み技術の再研究ができない', () {
+  // isUnlocked=true の技術に対して startResearch
+  // → money が変わらない
+  // → turnLog に '既に研究完了' メッセージ
+});
+
+test('研究中技術の再研究ができない', () {
+  // currentResearchProgress > 0 の技術に対して startResearch
+  // → money が変わらない
+  // → turnLog に '既に研究中' メッセージ
+});
+```
+
+---
+
+## 015-A: UI改善 — P3
+
+### A. サーバー購入ボタンの資金チェック
+
+**変更対象:** `lib/ui/screens/infra_tab.dart`
+
+サーバー購入ボタンの条件:
+```dart
+// サーバー購入の初期費用はサーバーの種類によって異なる
+// InfraEngine.purchaseServer 内で money チェックしている
+// UI側では money < purchaseCost のときボタンを disabled にする
+
+ElevatedButton(
+  onPressed: state.money >= server.purchaseCost
+    ? () => ref.read(gameProvider.notifier).purchaseServer(server)
+    : null,  // null = disabled
+  child: Text('購入 (${server.purchaseCost}万円)'),
+)
+```
+
+**注意:** `server.purchaseCost` プロパティの有無を確認する必要あり。`InfraEngine.purchaseServer` 内のコスト計算ロジックを参照して、UI側でも同じ値を使う。
+
+### B. アサインダイアログのエンジニアフィルター
+
+**変更対象:** `lib/ui/screens/contract_tab.dart`, `lib/ui/screens/saas_tab.dart`
+
+アサイン候補のフィルタリング:
+```dart
+// 修正前（推定）:
+final candidates = state.unassignedEmployees;
+
+// 修正後:
+final candidates = state.unassignedEmployees
+    .where((e) => e.type == EmployeeType.engineer)
+    .toList();
+```
+
+**設計根拠:** マーケター、バックオフィスはコード開発に参加できないため、プロジェクトアサイン候補から除外。StaffBonusEngine による間接効果は別途反映されている。
+
+### テスト方法
+
+UI widget テスト:
+```dart
+testWidgets('サーバー購入ボタンが資金不足時にdisabled', (tester) async {
+  // money=0 の状態でinfra_tabを描画
+  // サーバー購入ボタンがタップ不可であること
+});
+
+testWidgets('アサインダイアログにエンジニアのみ表示', (tester) async {
+  // engineer + marketer の社員がいる状態
+  // アサインダイアログを開く
+  // マーケターが表示されないこと
+});
+```
+
+---
+
+## 015-B: オフィスアップグレード機能 — P3
+
+### 問題の根本原因
+
+`Office` モデルが存在し、`maxEmployees`, `monthlyCost`, `happinessBonus`, `productivityBonus` フィールドがあるが、初期オフィスのみでアップグレード手段がない。
+
+### オフィスグレード定義
+
+| ID | 名前 | 社員上限 | 月額(万円) | 幸福度Bonus | 生産性Bonus | 購入費(万円) |
+|---|---|---|---|---|---|---|
+| office_garage | ガレージオフィス | 5 | 5 | 0 | 0 | 0 (初期) |
+| office_coworking | コワーキングスペース | 8 | 15 | 5 | 5 | 50 |
+| office_small | 小規模オフィス | 15 | 30 | 10 | 8 | 150 |
+| office_medium | 中規模オフィス | 30 | 60 | 15 | 12 | 400 |
+| office_large | 大規模オフィス | 50 | 100 | 20 | 15 | 800 |
+
+**ゲームバランス考察:**
+- ガレージ→コワーキング: 序盤の50万は投資判断として適切（月15万の固定費増に見合うか）
+- 最上位の大規模オフィスは800万の投資 + 月100万のランニングコスト。中盤以降のSaaS収益が安定してから検討するレベル
+- `productivityBonus` は processProjects の `bonusMultiplier` に反映される（既に実装済み）
+- `happinessBonus` は EmployeeEngine.processEmployeeTurn 等で社員の幸福度維持に使う（要追加実装）
+
+### 修正方針
+
+#### 1. オフィスマスターデータ
+
+**変更対象:** `lib/core/models/office.dart`
+
+```dart
+class Office {
+  // ... 既存フィールド ...
+
+  /// 全オフィスの一覧（アップグレード順）
+  static const List<Office> allGrades = [
+    Office(id: 'office_garage', name: 'ガレージオフィス', maxEmployees: 5, monthlyCost: 5, description: 'スタートアップの原点'),
+    Office(id: 'office_coworking', name: 'コワーキングスペース', maxEmployees: 8, monthlyCost: 15, happinessBonus: 5, productivityBonus: 5, description: '他社との交流でモチベUP'),
+    Office(id: 'office_small', name: '小規模オフィス', maxEmployees: 15, monthlyCost: 30, happinessBonus: 10, productivityBonus: 8, description: '自社専用の開発空間'),
+    Office(id: 'office_medium', name: '中規模オフィス', maxEmployees: 30, monthlyCost: 60, happinessBonus: 15, productivityBonus: 12, description: 'ワンフロアの広々空間'),
+    Office(id: 'office_large', name: '大規模オフィス', maxEmployees: 50, monthlyCost: 100, happinessBonus: 20, productivityBonus: 15, description: '自社ビルで圧倒的存在感'),
+  ];
+
+  /// アップグレード費用マップ
+  static const Map<String, int> upgradeCosts = {
+    'office_garage': 0,
+    'office_coworking': 50,
+    'office_small': 150,
+    'office_medium': 400,
+    'office_large': 800,
+  };
+
+  /// このオフィスのグレードインデックス（0=最低）
+  int get gradeIndex => allGrades.indexWhere((o) => o.id == id);
+
+  /// 次のアップグレード先
+  Office? get nextUpgrade {
+    final idx = gradeIndex;
+    if (idx < 0 || idx >= allGrades.length - 1) return null;
+    return allGrades[idx + 1];
+  }
+}
+```
+
+#### 2. アップグレードロジック
+
+**変更対象:** `lib/state/game_notifier.dart`
 
 ```dart
 void upgradeOffice(String newOfficeId) {
   if (!_canAfford(ActionCategory.management)) return;
-  // 1. 新オフィスのデータ取得
-  // 2. アップグレード費用チェック
-  // 3. 現在のオフィスより上位かチェック
-  // 4. state更新: office, money, ap, turnLog
+
+  final newOffice = Office.allGrades.firstWhere((o) => o.id == newOfficeId);
+  final cost = Office.upgradeCosts[newOfficeId] ?? 0;
+
+  // 資金チェック
+  if (state.money < cost) {
+    state = state.copyWith(
+      turnLog: [...state.turnLog, 'オフィスアップグレードの費用（${cost}万円）が不足しています。'],
+    );
+    return;
+  }
+
+  // 現在のオフィスよりグレードが上かチェック
+  final currentIndex = state.office?.gradeIndex ?? -1;
+  final newIndex = newOffice.gradeIndex;
+  if (newIndex <= currentIndex) {
+    state = state.copyWith(
+      turnLog: [...state.turnLog, '現在のオフィス以下のグレードにはダウングレードできません。'],
+    );
+    return;
+  }
+
+  state = state.copyWith(
+    office: () => newOffice,
+    money: state.money - cost,
+    ap: state.ap - _apCost(ActionCategory.management),
+    turnLog: [
+      ...state.turnLog,
+      'オフィスを「${newOffice.name}」にアップグレードしました！ -${cost}万円 (社員上限: ${newOffice.maxEmployees}人)',
+    ],
+  );
 }
 ```
 
-**3. UIコンポーネント**
+#### 3. happinessBonus の反映
 
-`lib/ui/screens/infra_tab.dart` にオフィスセクション追加:
-- 現在のオフィス情報表示
-- アップグレード可能なオフィスの一覧
-- アップグレードボタン（資金・グレードチェック付き）
+**変更対象:** `lib/core/employee_engine.dart` の processEmployeeTurn（ターン終了時）
 
-### 期待される結果
+幸福度回復処理にオフィスボーナスを加算:
 
-- 会社の成長に応じてオフィスをアップグレード可能
-- 社員上限が増加し、大規模チーム運営が可能に
-- 幸福度・生産性ボーナスが戦略的な投資として機能
+```dart
+// 既存の幸福度変動ロジックに追加:
+final officeHappinessBonus = state.office?.happinessBonus ?? 0;
+// ターンごとに officeHappinessBonus/10 程度の幸福度回復ボーナス
+// （大きすぎるとバランスが崩れるので控えめに）
+```
+
+**注意:** `happinessBonus` が具体的にどう反映されるかは processEmployeeTurn の既存ロジックを確認してから決定する必要がある。
+
+#### 4. UIコンポーネント
+
+**変更対象:** `lib/ui/screens/infra_tab.dart`
+
+```
+[現在のオフィス情報カード]
+  名前: コワーキングスペース
+  社員上限: 8人 / 月額: 15万円
+  生産性+5% / 幸福度+5
+
+[アップグレードボタン]
+  → 小規模オフィス (150万円)
+    社員上限15人 / 月額30万円 / 生産性+8% / 幸福度+10
+```
 
 ### テスト方法
 
 ```dart
 test('オフィスアップグレードが正しく適用される', () {
-  // ガレージ → コワーキングへアップグレード
-  // maxEmployees, monthlyCost, bonus が更新されること
-  // money が upgradeCost 分減少すること
+  // 初期状態（ガレージ）
+  // upgradeOffice('office_coworking') 実行
+  // state.office.id == 'office_coworking'
+  // state.money が 50万円減少
+  // state.maxEmployees == 8
+});
+
+test('資金不足でアップグレードできない', () {
+  // money=10 でアップグレード試行
+  // → office が変わらない
+});
+
+test('ダウングレードできない', () {
+  // 現在 office_small → office_coworking にアップグレード試行
+  // → office が変わらない
 });
 ```
 
 ---
 
-## 横断的な注意事項
+## 追加発見事項（今回のスコープ外・将来タスク）
 
-### アーキテクチャ規約の遵守
+### A. `startSaaSDevelopment` の重複チェック不足
 
-- **copyWithパターン:** Office の nullable パターン (`Office? Function()? office`) を維持
-- **レイヤー分離:** ロジックは `lib/core/`, 状態管理は `lib/state/`, UIは `lib/ui/`
-- **import順序:** `dart:` → `package:flutter/` → `package:` → relative imports
+**場所:** `game_notifier.dart:103-127`
 
-### 実装優先度
+同じSaaS製品を複数回開発開始できてしまう。`state.saasProducts` に同じIDの製品が重複して追加される可能性がある。
 
-1. **Critical (P1):** 001, 002, 003 — ゲーム進行に致命的なバグ
-2. **High (P2):** 004, 005, 006 — ゲームバランスに影響
-3. **Medium (P3):** 007, 008, 009 — バランス改善・UX向上
+```dart
+// 追加すべきチェック:
+if (state.saasProducts.any((p) => p.id == productId)) {
+  state = state.copyWith(
+    turnLog: [...state.turnLog, 'この製品は既に開発中/リリース済みです。'],
+  );
+  return;
+}
+```
 
----
+### B. `DateTime.now()` の使用によるテスト不安定性
 
-## 追加発見事項（今回のスコープ外）
+**場所:**
+- `contract_engine.dart:388` — `DateTime.now().millisecondsSinceEpoch` でRandom seed
+- `loan.dart:53` — `DateTime.now().millisecondsSinceEpoch` でローンID生成
 
-コードレビュー中に発見した追加の改善候補。将来タスクとして参照。
+テスト時に結果が不安定になる。将来的に `Random` インスタンスを外部から注入可能にするリファクタリングが望ましい。
 
-### A. 残業指示の効果が不完全
+### C. `happinessBonus` のターン処理への反映（015-Bと連携）
 
-`employee_engine.dart:orderOvertime` (L159-183):
-- 疲労増加と幸福度低下は行うが、プロジェクトの作業進捗に反映されていない
-- APを消費するがプロジェクトの `currentWork` は増えない
-- `contract_engine.dart:workOnProject` (L213-231) も同様にAPだけ消費して何もしない
+`Office.happinessBonus` はオフィスアップグレード実装時に併せて反映する必要がある。`processEmployeeTurn` 内での幸福度回復ロジックにボーナスを加算する。
 
-### B. イベント抽選の順序依存性
+### D. acceptProject の AP消費パターン不整合
 
-`event_engine.dart:rollEvent` (L22-29):
-- `eligibleEvents` をリスト順に走査し、最初に確率をパスしたイベントを返す
-- リスト先頭のイベント（`evt_talent_market`, probability: 0.3）が最も発火しやすい
-- よりフェアな抽選にするには、確率に基づく重み付き抽選が望ましい
+**場所:** `game_notifier.dart:47-51`
 
-### C. SaaS開発中社員の判定がproject.idベース
+```dart
+void acceptProject(String projectId) {
+  if (!_canAfford(ActionCategory.sales)) return;
+  state = ContractEngine.acceptProject(state, projectId);
+  state = state.copyWith(ap: state.ap - _apCost(ActionCategory.sales));
+}
+```
 
-`saas_engine.dart:processSaaS` (L74-75):
-- `e.assignedProjectId == product.id` で開発社員を判定
-- しかし `assignedProjectId` は受託案件のアサインで使用される前提のフィールド
-- SaaS専用のアサイン機構が未実装の可能性がある（UIで確認必要）
-
-### D. 案件生成の擬似ランダム
-
-`contract_engine.dart:generateProjects` (L283):
-- `DateTime.now().millisecondsSinceEpoch` を直接使っており、テスト時に結果が不安定
-- `Random` インスタンスを注入可能にすべき
+`acceptProject` は成功チェックなしにAPを消費する。ただし `ContractEngine.acceptProject` は受注可能な案件がある限り失敗しないため、実質問題ない。低優先度。

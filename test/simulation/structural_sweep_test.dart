@@ -268,9 +268,9 @@ void main() {
     // Phase 1: 個別パラメータの影響度測定
     // ════════════════════════════════════════════════
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
     print('  Phase 1: 個別パラメータの影響度 (GreedyBot, $n回/条件)');
-    print('${'═' * 90}');
+    print('═' * 90);
 
     final baseline = const StructuralTweak(label: '現状(ベースライン)');
     final singles = [
@@ -301,15 +301,15 @@ void main() {
       final results = runWithTweak(GreedyBot(), tweak, n);
       _printRow(tweak.label, results);
     }
-    print('${'─' * 90}');
+    print('─' * 90);
 
     // ════════════════════════════════════════════════
     // Phase 2: 修正パッケージの比較
     // ════════════════════════════════════════════════
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
     print('  Phase 2: 修正パッケージ比較 (GreedyBot, $n回)');
-    print('${'═' * 90}');
+    print('═' * 90);
 
     final packages = [
       const StructuralTweak(
@@ -378,15 +378,15 @@ void main() {
       final results = runWithTweak(GreedyBot(), pkg, n);
       _printRow(pkg.label, results);
     }
-    print('${'─' * 90}');
+    print('─' * 90);
 
     // ════════════════════════════════════════════════
     // Phase 3: ベスト候補を全bot比較
     // ════════════════════════════════════════════════
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
     print('  Phase 3: ベスト候補の全bot比較 ($n回)');
-    print('${'═' * 90}');
+    print('═' * 90);
 
     // Phase 2で良さそうなパッケージをピックアップ
     final bestCandidates = [
@@ -427,6 +427,6 @@ void main() {
     }
 
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
   });
 }

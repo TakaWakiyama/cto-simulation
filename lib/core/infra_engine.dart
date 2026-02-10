@@ -14,8 +14,7 @@ class InfraEngine {
 
     // SaaSユーザーに基づく負荷を分配
     final totalUsers = state.totalSaasUsers;
-    final activeServers =
-        state.servers.where((s) => !s.isDown).toList();
+    final activeServers = state.servers.where((s) => !s.isDown).toList();
     final userPerServer = activeServers.isEmpty
         ? 0
         : totalUsers ~/ activeServers.length;
@@ -47,7 +46,9 @@ class InfraEngine {
           log.add('サーバー障害によりユーザーの信頼が低下しています。');
         }
       } else if (updated.isHighLoad) {
-        log.add('${server.name}の負荷が高くなっています (${(updated.loadRate * 100).toStringAsFixed(0)}%)');
+        log.add(
+          '${server.name}の負荷が高くなっています (${(updated.loadRate * 100).toStringAsFixed(0)}%)',
+        );
       }
 
       updatedServers.add(updated);
@@ -73,10 +74,7 @@ class InfraEngine {
     final purchaseCost = server.monthlyCost * 3;
     if (state.money < purchaseCost) {
       return state.copyWith(
-        turnLog: [
-          ...state.turnLog,
-          'サーバー購入費用（${purchaseCost}万円）が不足しています。',
-        ],
+        turnLog: [...state.turnLog, 'サーバー購入費用（${purchaseCost}万円）が不足しています。'],
       );
     }
 
@@ -94,10 +92,33 @@ class InfraEngine {
   static GameState removeServer(GameState state, String serverId) {
     return state.copyWith(
       servers: state.servers.where((s) => s.id != serverId).toList(),
-      turnLog: [
-        ...state.turnLog,
-        'サーバーを撤去しました。',
-      ],
+      turnLog: [...state.turnLog, 'サーバーを撤去しました。'],
+    );
+  }
+
+  /// サーバー修理（手動復旧）
+  static GameState repairServer(GameState state, String serverId) {
+    final serverIndex = state.servers.indexWhere((s) => s.id == serverId);
+    if (serverIndex < 0) {
+      return state.copyWith(turnLog: [...state.turnLog, '対象のサーバーが見つかりませんでした。']);
+    }
+
+    final server = state.servers[serverIndex];
+    if (!server.isDown) {
+      return state.copyWith(
+        turnLog: [...state.turnLog, '${server.name}は正常稼働中です。'],
+      );
+    }
+
+    final updatedServers = [...state.servers];
+    updatedServers[serverIndex] = server.copyWith(
+      isDown: false,
+      currentLoad: 0,
+    );
+
+    return state.copyWith(
+      servers: updatedServers,
+      turnLog: [...state.turnLog, '${server.name}を手動復旧しました。'],
     );
   }
 

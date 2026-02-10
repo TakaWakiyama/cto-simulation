@@ -16,6 +16,12 @@ class InfraTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
     final notifier = ref.read(gameProvider.notifier);
+    final techApCost = ApCostCalculator.cost(state.config, ActionCategory.tech);
+    final canUseTechAction = ApCostCalculator.canAfford(
+      state.ap,
+      state.config,
+      ActionCategory.tech,
+    );
 
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -29,10 +35,7 @@ class InfraTab extends ConsumerWidget {
               children: [
                 const Text(
                   'サーバーステータス',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -69,8 +72,12 @@ class InfraTab extends ConsumerWidget {
 
         // サーバー購入ボタン
         ElevatedButton.icon(
-          onPressed: ApCostCalculator.canAfford(
-                  state.ap, state.config, ActionCategory.tech)
+          onPressed:
+              ApCostCalculator.canAfford(
+                state.ap,
+                state.config,
+                ActionCategory.tech,
+              )
               ? () => _showPurchaseDialog(context, ref)
               : null,
           icon: const Icon(Icons.add_circle_outline, size: 18),
@@ -85,10 +92,16 @@ class InfraTab extends ConsumerWidget {
         const SizedBox(height: 12),
 
         // 所有サーバー一覧
-        ...state.servers.map((server) => _ServerCard(
-              server: server,
-              onRemove: () => _confirmRemove(context, notifier, server),
-            )),
+        ...state.servers.map(
+          (server) => _ServerCard(
+            server: server,
+            onRemove: () => _confirmRemove(context, notifier, server),
+            onRepair: server.isDown && canUseTechAction
+                ? () => notifier.repairServer(server.id)
+                : null,
+            repairApCost: techApCost,
+          ),
+        ),
 
         if (state.servers.isEmpty)
           const Padding(
@@ -96,8 +109,11 @@ class InfraTab extends ConsumerWidget {
             child: Center(
               child: Column(
                 children: [
-                  Icon(Icons.dns_outlined, size: 48,
-                      color: AppColors.textMuted),
+                  Icon(
+                    Icons.dns_outlined,
+                    size: 48,
+                    color: AppColors.textMuted,
+                  ),
                   SizedBox(height: 8),
                   Text(
                     'サーバーがありません\nSaaSを運用するにはサーバーが必要です',
@@ -138,10 +154,7 @@ class InfraTab extends ConsumerWidget {
                 children: [
                   const Text(
                     'サーバー購入',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -172,14 +185,18 @@ class InfraTab extends ConsumerWidget {
                             trailing: ElevatedButton(
                               onPressed: canBuy
                                   ? () {
-                                      notifier.purchaseServer(server.copyWith(
-                                        id: 'srv_${DateTime.now().millisecondsSinceEpoch}',
-                                      ));
+                                      notifier.purchaseServer(
+                                        server.copyWith(
+                                          id: 'srv_${DateTime.now().millisecondsSinceEpoch}',
+                                        ),
+                                      );
                                       Navigator.pop(ctx);
                                     }
                                   : null,
-                              child: Text('${purchaseCost}万',
-                                  style: const TextStyle(fontSize: 12)),
+                              child: Text(
+                                '${purchaseCost}万',
+                                style: const TextStyle(fontSize: 12),
+                              ),
                             ),
                           ),
                         );
@@ -196,7 +213,10 @@ class InfraTab extends ConsumerWidget {
   }
 
   void _confirmRemove(
-      BuildContext context, GameNotifier notifier, Server server) {
+    BuildContext context,
+    GameNotifier notifier,
+    Server server,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -221,27 +241,34 @@ class InfraTab extends ConsumerWidget {
   }
 
   IconData _tierIcon(ServerTier tier) => switch (tier) {
-        ServerTier.shared => Icons.cloud_outlined,
-        ServerTier.vps => Icons.dns_outlined,
-        ServerTier.dedicated => Icons.dns,
-        ServerTier.cloud => Icons.cloud,
-        ServerTier.enterprise => Icons.cloud_circle,
-      };
+    ServerTier.shared => Icons.cloud_outlined,
+    ServerTier.vps => Icons.dns_outlined,
+    ServerTier.dedicated => Icons.dns,
+    ServerTier.cloud => Icons.cloud,
+    ServerTier.enterprise => Icons.cloud_circle,
+  };
 
   Color _tierColor(ServerTier tier) => switch (tier) {
-        ServerTier.shared => AppColors.textSecondary,
-        ServerTier.vps => AppColors.blue,
-        ServerTier.dedicated => AppColors.purple,
-        ServerTier.cloud => AppColors.cyan,
-        ServerTier.enterprise => AppColors.orange,
-      };
+    ServerTier.shared => AppColors.textSecondary,
+    ServerTier.vps => AppColors.blue,
+    ServerTier.dedicated => AppColors.purple,
+    ServerTier.cloud => AppColors.cyan,
+    ServerTier.enterprise => AppColors.orange,
+  };
 }
 
 class _ServerCard extends StatelessWidget {
-  const _ServerCard({required this.server, required this.onRemove});
+  const _ServerCard({
+    required this.server,
+    required this.onRemove,
+    required this.onRepair,
+    required this.repairApCost,
+  });
 
   final Server server;
   final VoidCallback onRemove;
+  final VoidCallback? onRepair;
+  final int repairApCost;
 
   @override
   Widget build(BuildContext context) {
@@ -255,9 +282,7 @@ class _ServerCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  server.isDown
-                      ? Icons.error_outline
-                      : Icons.dns_outlined,
+                  server.isDown ? Icons.error_outline : Icons.dns_outlined,
                   color: server.isDown ? AppColors.red : AppColors.blue,
                   size: 24,
                 ),
@@ -286,7 +311,9 @@ class _ServerCard extends StatelessWidget {
                 if (server.isDown)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.red.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(4),
@@ -304,6 +331,21 @@ class _ServerCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (server.isDown) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onRepair,
+                  icon: const Icon(Icons.build_outlined, size: 16),
+                  label: Text('修理する (AP$repairApCost)'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.orange,
+                    side: const BorderSide(color: AppColors.orange),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             GameProgressBar(
               value: server.loadRate,
@@ -372,10 +414,7 @@ class _StatItem extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 10,
-            color: AppColors.textSecondary,
-          ),
+          style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
         ),
       ],
     );

@@ -197,9 +197,9 @@ void main() {
     // Step 1: 極端なパラメータで「生存可能な範囲」を特定
     // ══════════════════════════════════════════
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
     print('  Step 1: 極端パラメータで生存可能範囲を特定 ($n回, GreedyBot)');
-    print('${'═' * 90}');
+    print('═' * 90);
 
     final extremes = [
       const StructuralTweak(label: '現状ベースライン'),
@@ -237,15 +237,15 @@ void main() {
     for (final tweak in extremes) {
       _printStats(tweak.label, _run(GreedyBot(), tweak, n));
     }
-    print('${'─' * 90}');
+    print('─' * 90);
 
     // ══════════════════════════════════════════
     // Step 2: 生存率が上がった条件を4bot比較
     // ══════════════════════════════════════════
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
     print('  Step 2: ベスト条件の全bot比較 ($n回)');
-    print('${'═' * 90}');
+    print('═' * 90);
 
     final best = [
       const StructuralTweak(
@@ -273,16 +273,16 @@ void main() {
         _printStats(label, _run(bot, tweak, n));
       }
     }
-    print('${'─' * 90}');
+    print('─' * 90);
 
     // ══════════════════════════════════════════
     // Step 3: 「ゲームとして面白いバランス」を探る
     //         目標: 生存率 30-60%（上手いプレイで生存可能）
     // ══════════════════════════════════════════
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
     print('  Step 3: ゲームバランス目標（生存率30-60%）を探索 ($n回, GreedyBot)');
-    print('${'═' * 90}');
+    print('═' * 90);
 
     final gameBalance = [
       // 現実的な報酬 + 現実的な工数 + 構造修正
@@ -321,13 +321,13 @@ void main() {
     for (final tweak in gameBalance) {
       _printStats(tweak.label, _run(GreedyBot(), tweak, n));
     }
-    print('${'─' * 90}');
+    print('─' * 90);
 
     // ベストなバランスを全bot比較
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
     print('  Step 4: ベストバランス候補 全bot比較 ($n回)');
-    print('${'═' * 90}');
+    print('═' * 90);
 
     // Step 3で最も生存率が高かったものをピック
     for (final tweak in gameBalance) {
@@ -342,6 +342,6 @@ void main() {
     }
 
     print('');
-    print('${'═' * 90}');
+    print('═' * 90);
   });
 }

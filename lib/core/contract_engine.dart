@@ -41,12 +41,14 @@ class ContractEngine {
     String employeeId,
   ) {
     final employee = state.employees.firstWhere((e) => e.id == employeeId);
+    if (!employee.isEngineer) {
+      return state.copyWith(
+        turnLog: [...state.turnLog, '${employee.name}はエンジニアではないためアサインできません。'],
+      );
+    }
     if (employee.isAssigned) {
       return state.copyWith(
-        turnLog: [
-          ...state.turnLog,
-          '${employee.name}は既に別の案件にアサインされています。',
-        ],
+        turnLog: [...state.turnLog, '${employee.name}は既に別の案件にアサインされています。'],
       );
     }
 
@@ -69,25 +71,20 @@ class ContractEngine {
     return state.copyWith(
       contractProjects: updatedProjects,
       employees: updatedEmployees,
-      turnLog: [
-        ...state.turnLog,
-        '${employee.name}を案件にアサインしました。',
-      ],
+      turnLog: [...state.turnLog, '${employee.name}を案件にアサインしました。'],
     );
   }
 
   /// 社員のアサイン解除
-  static GameState unassignEmployee(
-    GameState state,
-    String employeeId,
-  ) {
+  static GameState unassignEmployee(GameState state, String employeeId) {
     final employee = state.employees.firstWhere((e) => e.id == employeeId);
 
     final updatedProjects = state.contractProjects.map((p) {
       if (p.assignedEmployeeIds.contains(employeeId)) {
         return p.copyWith(
-          assignedEmployeeIds:
-              p.assignedEmployeeIds.where((id) => id != employeeId).toList(),
+          assignedEmployeeIds: p.assignedEmployeeIds
+              .where((id) => id != employeeId)
+              .toList(),
         );
       }
       return p;
@@ -103,10 +100,7 @@ class ContractEngine {
     return state.copyWith(
       contractProjects: updatedProjects,
       employees: updatedEmployees,
-      turnLog: [
-        ...state.turnLog,
-        '${employee.name}のアサインを解除しました。',
-      ],
+      turnLog: [...state.turnLog, '${employee.name}のアサインを解除しました。'],
     );
   }
 
@@ -127,8 +121,9 @@ class ContractEngine {
       }
 
       // アサイン中の社員の生産力を合計
-      final assignedEmployees = state.employees
-          .where((e) => project.assignedEmployeeIds.contains(e.id));
+      final assignedEmployees = state.employees.where(
+        (e) => e.isEngineer && project.assignedEmployeeIds.contains(e.id),
+      );
 
       if (assignedEmployees.isEmpty) {
         // 超過判定だけ行う（社員がいなくても納期は進む）
@@ -158,28 +153,32 @@ class ContractEngine {
       final workDone = (totalProductivity * bonusMultiplier / 10).round();
 
       var updated = project.copyWith(
-        currentWork: (project.currentWork + workDone)
-            .clamp(0, project.totalWork),
+        currentWork: (project.currentWork + workDone).clamp(
+          0,
+          project.totalWork,
+        ),
       );
 
       // 品質スコアの計算（スキル・疲労・テクノロジーに基づく）
-      final avgSkill = assignedEmployees.fold(0, (sum, e) => sum + e.skill) /
+      final avgSkill =
+          assignedEmployees.fold(0, (sum, e) => sum + e.skill) /
           assignedEmployees.length;
       final avgFatigue =
           assignedEmployees.fold(0, (sum, e) => sum + e.fatigue) /
-              assignedEmployees.length;
+          assignedEmployees.length;
       final techQualityBonus = state.technologies
           .where((t) => t.isUnlocked)
           .fold(0, (sum, t) => sum + t.qualityBonus);
       final qualityDelta =
-          ((avgSkill - 50) / 10 - avgFatigue / 20 + techQualityBonus / 10).round();
+          ((avgSkill - 50) / 10 - avgFatigue / 20 + techQualityBonus / 10)
+              .round();
       updated = updated.copyWith(
-        qualityScore:
-            (updated.qualityScore + qualityDelta).clamp(0, 100),
+        qualityScore: (updated.qualityScore + qualityDelta).clamp(0, 100),
       );
 
       log.add(
-          '「${project.name}」進捗: +$workDone (${updated.progress * 100 ~/ 1}%)');
+        '「${project.name}」進捗: +$workDone (${updated.progress * 100 ~/ 1}%)',
+      );
 
       // 完了判定（超過中でも完了可能）
       if (updated.isCompleted) {
@@ -204,8 +203,9 @@ class ContractEngine {
 
     // 完了した案件の報酬処理とアサイン解除
     for (final projectId in completedProjectIds) {
-      final project =
-          updatedState.contractProjects.firstWhere((p) => p.id == projectId);
+      final project = updatedState.contractProjects.firstWhere(
+        (p) => p.id == projectId,
+      );
       for (final empId in project.assignedEmployeeIds) {
         updatedState = ContractEngine.unassignEmployee(updatedState, empId);
       }
@@ -213,8 +213,9 @@ class ContractEngine {
 
     // 新たに納期超過になった案件のみペナルティ（毎ターン繰り返さない）
     for (final projectId in newlyOverdueIds) {
-      final project =
-          updatedState.contractProjects.firstWhere((p) => p.id == projectId);
+      final project = updatedState.contractProjects.firstWhere(
+        (p) => p.id == projectId,
+      );
       updatedState = updatedState.copyWith(
         trust: (updatedState.trust - 2).clamp(0, 100),
         turnLog: [
@@ -226,9 +227,12 @@ class ContractEngine {
 
     // 3ターン以上超過した案件を自動失敗
     final autoFailProjects = updatedState.contractProjects
-        .where((p) =>
-            p.status == ProjectStatus.overdue &&
-            -(p.remainingTurns(updatedState.currentTurn)) >= overdueGraceTurns)
+        .where(
+          (p) =>
+              p.status == ProjectStatus.overdue &&
+              -(p.remainingTurns(updatedState.currentTurn)) >=
+                  overdueGraceTurns,
+        )
         .toList();
     for (final project in autoFailProjects) {
       updatedState = _failProject(updatedState, project);
@@ -274,8 +278,7 @@ class ContractEngine {
 
   /// 案件を破棄（プレイヤーによる手動破棄）
   static GameState abandonProject(GameState state, String projectId) {
-    final project =
-        state.contractProjects.firstWhere((p) => p.id == projectId);
+    final project = state.contractProjects.firstWhere((p) => p.id == projectId);
 
     if (project.status != ProjectStatus.inProgress &&
         project.status != ProjectStatus.overdue) {
@@ -322,17 +325,10 @@ class ContractEngine {
     bool isOvertime = false,
   }) {
     if (state.ap < apCost) {
-      return state.copyWith(
-        turnLog: [
-          ...state.turnLog,
-          'APが不足しています。',
-        ],
-      );
+      return state.copyWith(turnLog: [...state.turnLog, 'APが不足しています。']);
     }
 
-    return state.copyWith(
-      ap: state.ap - apCost,
-    );
+    return state.copyWith(ap: state.ap - apCost);
   }
 
   /// 新しい受託案件の生成
@@ -392,15 +388,16 @@ class ContractEngine {
     final maxProjects = trust >= 60
         ? 3
         : trust >= 30
-            ? 2
-            : 1;
+        ? 2
+        : 1;
 
     for (var i = 0; i < maxProjects; i++) {
       // ターンに応じて難易度を上げる
-      final maxTemplateIndex =
-          (turn / 30).floor().clamp(0, templates.length - 1);
-      final templateIndex =
-          (random + i * 7) % (maxTemplateIndex + 1);
+      final maxTemplateIndex = (turn / 30).floor().clamp(
+        0,
+        templates.length - 1,
+      );
+      final templateIndex = (random + i * 7) % (maxTemplateIndex + 1);
       final t = templates[templateIndex];
 
       final clientIndex = (random + i * 3) % t.clients.length;
@@ -411,17 +408,19 @@ class ContractEngine {
       final deadlineRange = t.deadline.$2 - t.deadline.$1;
       final deadline = t.deadline.$1 + ((random + i * 17) % deadlineRange);
 
-      projects.add(ContractProject(
-        id: 'proj_${turn}_$i',
-        name: t.name,
-        type: t.type,
-        clientName: t.clients[clientIndex],
-        reward: reward,
-        requiredSkill: t.skill.$1 +
-            ((random + i * 19) % (t.skill.$2 - t.skill.$1)),
-        totalWork: work,
-        deadline: deadline,
-      ));
+      projects.add(
+        ContractProject(
+          id: 'proj_${turn}_$i',
+          name: t.name,
+          type: t.type,
+          clientName: t.clients[clientIndex],
+          reward: reward,
+          requiredSkill:
+              t.skill.$1 + ((random + i * 19) % (t.skill.$2 - t.skill.$1)),
+          totalWork: work,
+          deadline: deadline,
+        ),
+      );
     }
 
     return projects;
