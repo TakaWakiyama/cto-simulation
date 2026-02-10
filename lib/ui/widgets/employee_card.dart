@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/employee.dart';
+import '../../core/models/employee_type.dart';
 import '../theme/app_colors.dart';
 import 'progress_bar.dart';
 
@@ -39,7 +40,7 @@ class EmployeeCard extends StatelessWidget {
               // ヘッダー
               Row(
                 children: [
-                  _roleIcon(employee.role),
+                  _employeeIcon(employee),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -53,7 +54,7 @@ class EmployeeCard extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '${employee.role.label} / ${employee.specialty.label}',
+                          _subtitle(employee),
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppColors.textSecondary,
@@ -95,8 +96,8 @@ class EmployeeCard extends StatelessWidget {
                         color: employee.fatigue > 70
                             ? AppColors.red
                             : employee.fatigue > 40
-                                ? AppColors.orange
-                                : AppColors.green,
+                            ? AppColors.orange
+                            : AppColors.green,
                         height: 6,
                       ),
                     ),
@@ -148,7 +149,9 @@ class EmployeeCard extends StatelessWidget {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: employee.isAssigned
                             ? AppColors.greenDark.withValues(alpha: 0.3)
@@ -174,7 +177,9 @@ class EmployeeCard extends StatelessWidget {
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.red.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
@@ -182,10 +187,7 @@ class EmployeeCard extends StatelessWidget {
                         ),
                         child: const Text(
                           '退職リスク',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.red,
-                          ),
+                          style: TextStyle(fontSize: 10, color: AppColors.red),
                         ),
                       ),
                     ],
@@ -212,13 +214,24 @@ class EmployeeCard extends StatelessWidget {
     );
   }
 
-  Widget _roleIcon(EmployeeRole role) {
-    final (icon, color) = switch (role) {
-      EmployeeRole.junior => (Icons.person_outline, AppColors.textSecondary),
-      EmployeeRole.mid => (Icons.person, AppColors.blue),
-      EmployeeRole.senior => (Icons.engineering, AppColors.purple),
-      EmployeeRole.lead => (Icons.supervisor_account, AppColors.orange),
-      EmployeeRole.architect => (Icons.architecture, AppColors.cyan),
+  String _subtitle(Employee employee) {
+    if (!employee.isEngineer) return employee.type.label;
+    return '${employee.role.label} / ${employee.specialty.label}';
+  }
+
+  Widget _employeeIcon(Employee employee) {
+    final (icon, color) = switch (employee.type) {
+      EmployeeType.engineer => switch (employee.role) {
+        EmployeeRole.junior => (Icons.person_outline, AppColors.textSecondary),
+        EmployeeRole.mid => (Icons.person, AppColors.blue),
+        EmployeeRole.senior => (Icons.engineering, AppColors.purple),
+        EmployeeRole.lead => (Icons.supervisor_account, AppColors.orange),
+        EmployeeRole.architect => (Icons.architecture, AppColors.cyan),
+      },
+      EmployeeType.sales => (Icons.handshake, AppColors.blue),
+      EmployeeType.marketer => (Icons.campaign, AppColors.purple),
+      EmployeeType.backOffice => (Icons.business_center, AppColors.orange),
+      EmployeeType.hr => (Icons.groups, AppColors.cyan),
     };
 
     return Container(
@@ -254,10 +267,7 @@ class _ActionChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: color.withValues(alpha: 0.5)),
         ),
-        child: Text(
-          label,
-          style: TextStyle(fontSize: 11, color: color),
-        ),
+        child: Text(label, style: TextStyle(fontSize: 11, color: color)),
       ),
     );
   }

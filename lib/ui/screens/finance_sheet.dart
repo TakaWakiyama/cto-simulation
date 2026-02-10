@@ -10,13 +10,22 @@ import '../theme/app_colors.dart';
 class FinanceSheet extends ConsumerWidget {
   const FinanceSheet({super.key});
 
+  List<int> _debtRepayOptions(int repayableDebt) {
+    final options = <int>{};
+    for (final amount in [10, 50, 100]) {
+      if (amount <= repayableDebt) options.add(amount);
+    }
+    options.add(repayableDebt);
+    return options.toList()..sort();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(gameProvider);
     final notifier = ref.read(gameProvider.notifier);
-    final financeApCost =
-        notifier.getActionApCost(ActionCategory.finance);
+    final financeApCost = notifier.getActionApCost(ActionCategory.finance);
     final canAfford = state.ap >= financeApCost;
+    final repayableDebt = state.money < state.debt ? state.money : state.debt;
 
     return Container(
       decoration: const BoxDecoration(
@@ -36,10 +45,7 @@ class FinanceSheet extends ConsumerWidget {
               children: [
                 const Text(
                   '資金調達',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -62,11 +68,12 @@ class FinanceSheet extends ConsumerWidget {
 
                 // アクティブローン一覧
                 if (state.activeLoans.isNotEmpty) ...[
-                  ...state.activeLoans.map((loan) => _LoanCard(
-                        loan: loan,
-                        onEarlyRepay: () =>
-                            notifier.earlyRepayLoan(loan.id),
-                      )),
+                  ...state.activeLoans.map(
+                    (loan) => _LoanCard(
+                      loan: loan,
+                      onEarlyRepay: () => notifier.earlyRepayLoan(loan.id),
+                    ),
+                  ),
                   const SizedBox(height: 8),
                 ],
 
@@ -81,18 +88,22 @@ class FinanceSheet extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  ...LoanSize.values.map((size) => _LoanOption(
-                        size: size,
-                        canAfford: canAfford,
-                        onTap: () => notifier.takeLoan(size),
-                      )),
+                  ...LoanSize.values.map(
+                    (size) => _LoanOption(
+                      size: size,
+                      canAfford: canAfford,
+                      onTap: () => notifier.takeLoan(size),
+                    ),
+                  ),
                 ] else
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),
                     child: Text(
                       '同時に3件までしか借入できません',
                       style: TextStyle(
-                          fontSize: 12, color: AppColors.textMuted),
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                   ),
 
@@ -116,11 +127,14 @@ class FinanceSheet extends ConsumerWidget {
 
                 // エクイティラウンド一覧
                 ...EquityRoundType.values.map((type) {
-                  final completed =
-                      state.equityRounds.any((r) => r.type == type);
-                  final prerequisiteMet = type.prerequisite == null ||
-                      state.equityRounds
-                          .any((r) => r.type == type.prerequisite);
+                  final completed = state.equityRounds.any(
+                    (r) => r.type == type,
+                  );
+                  final prerequisiteMet =
+                      type.prerequisite == null ||
+                      state.equityRounds.any(
+                        (r) => r.type == type.prerequisite,
+                      );
                   final wouldExceedLimit =
                       state.totalEquitySold + type.equityPercent > 70;
 
@@ -185,6 +199,46 @@ class FinanceSheet extends ConsumerWidget {
                           color: AppColors.green,
                           bold: true,
                         ),
+                        if (state.debt > 0) ...[
+                          const SizedBox(height: 8),
+                          const Divider(),
+                          const SizedBox(height: 4),
+                          const Text(
+                            '通常負債の繰上返済',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (repayableDebt > 0)
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: _debtRepayOptions(repayableDebt)
+                                  .map(
+                                    (amount) => OutlinedButton(
+                                      onPressed: () =>
+                                          notifier.repayDebt(amount),
+                                      child: Text(
+                                        amount == repayableDebt
+                                            ? '全額返済(${amount}万円)'
+                                            : '${amount}万円返済',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            )
+                          else
+                            const Text(
+                              '返済できるキャッシュがありません。',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                        ],
                       ],
                     ),
                   ),
@@ -236,8 +290,7 @@ class _LoanCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = 1.0 -
-        (loan.remainingPrincipal / loan.principal);
+    final progress = 1.0 - (loan.remainingPrincipal / loan.principal);
 
     return Card(
       child: Padding(
@@ -409,12 +462,10 @@ class _EquityOption extends StatelessWidget {
               color: completed
                   ? AppColors.green.withValues(alpha: 0.5)
                   : enabled
-                      ? AppColors.purple.withValues(alpha: 0.5)
-                      : AppColors.border,
+                  ? AppColors.purple.withValues(alpha: 0.5)
+                  : AppColors.border,
             ),
-            color: completed
-                ? AppColors.green.withValues(alpha: 0.05)
-                : null,
+            color: completed ? AppColors.green.withValues(alpha: 0.05) : null,
           ),
           child: Row(
             children: [
@@ -424,8 +475,8 @@ class _EquityOption extends StatelessWidget {
                 color: completed
                     ? AppColors.green
                     : enabled
-                        ? AppColors.purple
-                        : AppColors.textMuted,
+                    ? AppColors.purple
+                    : AppColors.textMuted,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -440,8 +491,8 @@ class _EquityOption extends StatelessWidget {
                         color: completed
                             ? AppColors.green
                             : enabled
-                                ? AppColors.textPrimary
-                                : AppColors.textMuted,
+                            ? AppColors.textPrimary
+                            : AppColors.textMuted,
                       ),
                     ),
                     Text(
@@ -471,10 +522,7 @@ class _EquityOption extends StatelessWidget {
 }
 
 class _EquityBar extends StatelessWidget {
-  const _EquityBar({
-    required this.ownedPercent,
-    required this.soldPercent,
-  });
+  const _EquityBar({required this.ownedPercent, required this.soldPercent});
 
   final int ownedPercent;
   final int soldPercent;

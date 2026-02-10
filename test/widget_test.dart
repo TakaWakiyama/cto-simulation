@@ -1,9 +1,13 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cto_simulator/core/game_state.dart';
+import 'package:cto_simulator/core/models/employee.dart';
+import 'package:cto_simulator/core/models/employee_type.dart';
 import 'package:cto_simulator/core/models/game_config.dart';
 import 'package:cto_simulator/core/turn_engine.dart';
 import 'package:cto_simulator/core/economy_engine.dart';
+import 'package:cto_simulator/ui/widgets/employee_card.dart';
 
 void main() {
   group('GameState', () {
@@ -60,6 +64,48 @@ void main() {
       final result = EconomyEngine.checkGameOver(state);
 
       expect(result.isGameOver, true);
+    });
+
+    test('repayDebt reduces money and debt', () {
+      const config = GameConfig();
+      final state = GameState.initial(config).copyWith(money: 100, debt: 80);
+      final result = EconomyEngine.repayDebt(state, 30);
+
+      expect(result.money, 70);
+      expect(result.debt, 50);
+    });
+
+    test('repayDebt caps amount to remaining debt', () {
+      const config = GameConfig();
+      final state = GameState.initial(config).copyWith(money: 100, debt: 20);
+      final result = EconomyEngine.repayDebt(state, 50);
+
+      expect(result.money, 80);
+      expect(result.debt, 0);
+    });
+  });
+
+  group('EmployeeCard', () {
+    testWidgets('staff shows staff type label instead of engineer specialty', (
+      tester,
+    ) async {
+      const marketer = Employee(
+        id: 'staff_1',
+        name: 'マーケ担当',
+        role: EmployeeRole.mid,
+        specialty: EmployeeSpecialty.fullstack,
+        salary: 30,
+        type: EmployeeType.marketer,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(body: EmployeeCard(employee: marketer, compact: true)),
+        ),
+      );
+
+      expect(find.text('マーケター'), findsOneWidget);
+      expect(find.textContaining('フルスタック'), findsNothing);
     });
   });
 }
