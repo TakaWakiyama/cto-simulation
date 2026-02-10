@@ -17,13 +17,15 @@ class _TutorialDialogState extends State<TutorialDialog> {
       icon: Icons.terminal,
       color: AppColors.green,
       title: 'CTO Simulatorへようこそ',
-      description: 'あなたはITスタートアップのCTOです。\n'
+      description:
+          'あなたはITスタートアップのCTOです。\n'
           'エンジニアの採用、受託開発、SaaS事業、インフラ管理を通じて会社を成長させましょう。',
       details: [
         _DetailItem(
           icon: Icons.bolt,
           label: 'AP（行動ポイント）',
-          text: '毎ターン3AP。採用・受注などのアクションに消費します。\n'
+          text:
+              '毎ターン3AP。採用・受注などのアクションに消費します。\n'
               'CEOの得意分野は1AP、不得意は2AP消費。',
         ),
         _DetailItem(
@@ -34,7 +36,7 @@ class _TutorialDialogState extends State<TutorialDialog> {
         _DetailItem(
           icon: Icons.warning_amber,
           label: 'ゲームオーバー',
-          text: '負債1000万超 or 信頼度0 で即ゲームオーバー。資金管理が重要！',
+          text: 'キャッシュ0 or 信頼度0 で即ゲームオーバー。資金管理が重要！',
         ),
       ],
     ),
@@ -47,19 +49,22 @@ class _TutorialDialogState extends State<TutorialDialog> {
         _DetailItem(
           icon: Icons.assignment,
           label: '案件の受注',
-          text: '報酬・難易度・納期を確認して案件を選びましょう。'
+          text:
+              '報酬・難易度・納期を確認して案件を選びましょう。'
               '信頼度が高いほど良い案件が来ます。',
         ),
         _DetailItem(
           icon: Icons.person_add,
           label: '社員のアサイン',
-          text: '受注した案件にエンジニアをアサインすると開発が進みます。'
+          text:
+              '受注した案件にエンジニアをアサインすると開発が進みます。'
               '複数人アサインで加速！',
         ),
         _DetailItem(
           icon: Icons.timer,
           label: '納期に注意',
-          text: '期限内に完了しないと信頼度が下がります。'
+          text:
+              '期限内に完了しないと信頼度が下がります。'
               '無理な案件は受けないことも大切。',
         ),
       ],
@@ -73,19 +78,22 @@ class _TutorialDialogState extends State<TutorialDialog> {
         _DetailItem(
           icon: Icons.code,
           label: '製品開発',
-          text: '開発費を投じてSaaS製品を作成。'
+          text:
+              '開発費を投じてSaaS製品を作成。'
               '開発完了まで数ターンかかります。',
         ),
         _DetailItem(
           icon: Icons.rocket_launch,
           label: 'ローンチ',
-          text: '開発完了後にローンチするとユーザー獲得開始。'
+          text:
+              '開発完了後にローンチするとユーザー獲得開始。'
               'MRR（月額収入）が発生します。',
         ),
         _DetailItem(
           icon: Icons.dns,
           label: 'サーバー必須',
-          text: 'ユーザーが増えるとサーバー負荷が上昇。'
+          text:
+              'ユーザーが増えるとサーバー負荷が上昇。'
               'インフラタブでサーバーを確保しましょう。',
         ),
       ],
@@ -99,13 +107,15 @@ class _TutorialDialogState extends State<TutorialDialog> {
         _DetailItem(
           icon: Icons.shopping_cart,
           label: 'サーバー購入',
-          text: 'スペックや月額費用を比較して購入。'
+          text:
+              'スペックや月額費用を比較して購入。'
               'SaaSユーザー数に合わせて拡張が必要。',
         ),
         _DetailItem(
           icon: Icons.warning,
           label: '障害対応',
-          text: 'サーバーは確率で故障します。'
+          text:
+              'サーバーは確率で故障します。'
               '障害中はSaaS収入が減少し、信頼度も低下。',
         ),
       ],
@@ -119,19 +129,22 @@ class _TutorialDialogState extends State<TutorialDialog> {
         _DetailItem(
           icon: Icons.code,
           label: 'エンジニア',
-          text: '案件開発の主力。スキルが高いほど開発速度UP。'
+          text:
+              '案件開発の主力。スキルが高いほど開発速度UP。'
               '疲労管理と幸福度に注意。',
         ),
         _DetailItem(
           icon: Icons.support_agent,
           label: 'スタッフ',
-          text: '営業（報酬UP）・マーケター（SaaS成長）・バックオフィス（経費削減）・'
+          text:
+              '営業（報酬UP）・マーケター（SaaS成長）・バックオフィス（経費削減）・'
               '人事（採用費DOWN）の4職種。パッシブ効果で経営を支えます。',
         ),
         _DetailItem(
           icon: Icons.mood_bad,
           label: '退職リスク',
-          text: '幸福度が低いと退職してしまいます。'
+          text:
+              '幸福度が低いと退職してしまいます。'
               '給与・疲労・オフィス環境に気を配りましょう。',
         ),
       ],
@@ -188,8 +201,8 @@ class _TutorialDialogState extends State<TutorialDialog> {
                             color: isActive
                                 ? s.color
                                 : isDone
-                                    ? s.color.withValues(alpha: 0.3)
-                                    : Colors.transparent,
+                                ? s.color.withValues(alpha: 0.3)
+                                : Colors.transparent,
                             border: Border.all(
                               color: isActive || isDone
                                   ? s.color
@@ -203,8 +216,8 @@ class _TutorialDialogState extends State<TutorialDialog> {
                             color: isActive
                                 ? Colors.white
                                 : isDone
-                                    ? s.color
-                                    : AppColors.textMuted,
+                                ? s.color
+                                : AppColors.textMuted,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -272,52 +285,52 @@ class _TutorialDialogState extends State<TutorialDialog> {
                   const SizedBox(height: 16),
 
                   // 詳細項目
-                  ...step.details.map((detail) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: step.color.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: step.color.withValues(alpha: 0.2),
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(detail.icon,
-                                  size: 18, color: step.color),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      detail.label,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: step.color,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      detail.text,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                  ...step.details.map(
+                    (detail) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: step.color.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: step.color.withValues(alpha: 0.2),
                           ),
                         ),
-                      )),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(detail.icon, size: 18, color: step.color),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    detail.label,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: step.color,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    detail.text,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -46,9 +46,9 @@ void main() {
   });
 
   group('EconomyEngine', () {
-    test('game over when debt exceeds 1000', () {
+    test('game over when cash reaches 0', () {
       const config = GameConfig();
-      final state = GameState.initial(config).copyWith(debt: 1001);
+      final state = GameState.initial(config).copyWith(money: 0);
       final result = EconomyEngine.checkGameOver(state);
 
       expect(result.isGameOver, true);

@@ -15,7 +15,9 @@ class EconomyEngine {
 
     final log = <String>[];
     if (totalExpense > 0) {
-      log.add('月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost})');
+      log.add(
+        '月次経費: -${totalExpense}万円 (給与: ${state.totalSalary}, サーバー: ${state.totalServerCost}, オフィス: ${state.officeCost})',
+      );
     }
     if (saasRev > 0) {
       log.add('SaaS売上: +${saasRev}万円');
@@ -36,10 +38,7 @@ class EconomyEngine {
       updatedState = updatedState.copyWith(
         money: 0,
         debt: newDebt,
-        turnLog: [
-          ...updatedState.turnLog,
-          '資金不足! 負債が${newDebt}万円に増加',
-        ],
+        turnLog: [...updatedState.turnLog, '資金不足! 負債が${newDebt}万円に増加'],
       );
     }
 
@@ -47,21 +46,21 @@ class EconomyEngine {
   }
 
   /// 受託案件完了時の報酬受け取り（着手金分を差し引いた残金）
-  static GameState receiveContractReward(
-    GameState state,
-    String projectId,
-  ) {
+  static GameState receiveContractReward(GameState state, String projectId) {
     final project = state.contractProjects.firstWhere((p) => p.id == projectId);
     final salesMultiplier = StaffBonusEngine.salesRewardMultiplier(state);
     final reward =
-        (project.reward * state.config.difficulty.rewardMultiplier * salesMultiplier).round();
+        (project.reward *
+                state.config.difficulty.rewardMultiplier *
+                salesMultiplier)
+            .round();
 
     // 品質スコアに応じてボーナス/ペナルティ
     final qualityMultiplier = project.qualityScore >= 80
         ? 1.2
         : project.qualityScore >= 50
-            ? 1.0
-            : 0.8;
+        ? 1.0
+        : 0.8;
     final totalReward = (reward * qualityMultiplier).round();
 
     // 着手金（受注時に支払い済み）を差し引いた残金
@@ -72,8 +71,8 @@ class EconomyEngine {
     final baseTrustDelta = project.qualityScore >= 80
         ? 5
         : project.qualityScore >= 50
-            ? 2
-            : -3;
+        ? 2
+        : -3;
     final trustDelta = baseTrustDelta > 0
         ? baseTrustDelta + StaffBonusEngine.salesTrustBonus(state)
         : baseTrustDelta;
@@ -98,20 +97,17 @@ class EconomyEngine {
     return state.copyWith(
       money: state.money - amount,
       debt: state.debt - amount,
-      turnLog: [
-        ...state.turnLog,
-        '負債返済: ${amount}万円',
-      ],
+      turnLog: [...state.turnLog, '負債返済: ${amount}万円'],
     );
   }
 
   /// ゲームオーバー判定
   static GameState checkGameOver(GameState state) {
-    // 総負債（通常負債＋ローン残高）が1000万円を超えたら倒産
-    if (state.totalDebtWithLoans >= 1000) {
+    // キャッシュが尽きたら資金ショート
+    if (state.money <= 0) {
       return state.copyWith(
         isGameOver: true,
-        gameOverReason: () => '総負債が1000万円を超え、会社は倒産しました。',
+        gameOverReason: () => 'キャッシュが尽き、資金ショートで倒産しました。',
       );
     }
 

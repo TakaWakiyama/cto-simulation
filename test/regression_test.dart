@@ -955,25 +955,8 @@ void main() {
   });
 
   group('Edge cases: game over conditions', () {
-    test('game over when totalDebtWithLoans exceeds 1000', () {
-      final state = _createTestState(
-        debt: 500,
-        loans: [
-          Loan(
-            id: 'loan_test',
-            size: LoanSize.large,
-            principal: 500,
-            remainingPrincipal: 501,
-            monthlyRate: 0.01,
-            termMonths: 36,
-            remainingMonths: 30,
-            startTurn: 1,
-          ),
-        ],
-      );
-
-      // totalDebtWithLoans = 500 + 501 = 1001
-      expect(state.totalDebtWithLoans, 1001);
+    test('game over when cash reaches 0', () {
+      final state = _createTestState(money: 0);
 
       final result = EconomyEngine.checkGameOver(state);
       expect(result.isGameOver, true);
